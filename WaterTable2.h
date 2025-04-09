@@ -2,7 +2,7 @@
 WaterTable2 - Class to simulate water flowing over a surface using
 improved water flow simulation based on Saint-Venant system of partial
 differenctial equations.
-Copyright (c) 2012-2024 Oliver Kreylos
+Copyright (c) 2012-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -58,19 +58,38 @@ class WaterTable2:public GLObject
 		};
 	
 	private:
+	template <int numSlotsParam>
+	struct BufferedTexture // Structure holding state for a multi (double- or triple-) buffered texture
+		{
+		/* Elements: */
+		public:
+		static const int numSlots=numSlotsParam;
+		GLenum textureTarget; // Texture target to which the texture will be bound
+		GLuint textureObjects[numSlots]; // OpenGL texture object IDs for the texture's buffer slots
+		bool linears[numSlots]; // Flags whether the texture's buffer slots are currently set up for linear sampling
+		int current; // Index of the current buffer slot
+		
+		/* Constructors and destructors: */
+		BufferedTexture(GLenum sTextureTarget); // Creates an uninitialized buffered texture to be bound to the given texture target
+		~BufferedTexture(void); // Releases all allocated resources
+		
+		/* Methods: */
+		void init(unsigned int width,unsigned int height,int numComponents,GLenum internalFormat,GLenum externalFormat,float c0 =0.0f,float c1 =0.0f,float c2 =0.0f,float c3 =0.0f); // Initializes all buffer slots to the given contents and nearest-neighbor sampling
+		void setSamplingMode(int slot,bool linear); // Sets the sampling mode of the buffer slot of the given index to linear or nearest-neighbor
+		void bind(TextureTracker& textureTracker,Shader& shader,int slot,bool linear); // Binds the buffer slot of the given index to the given shader using the given texture tracker and sets it up for linear or nearest-neighbor sampling
+		GLint bindCurrent(TextureTracker& textureTracker,bool linear); // Binds the current buffer slot to the given texture tracker and sets it up for linear or nearest-neighbor sampling; returns the index of the used texture unit
+		};
+	
 	struct DataItem:public GLObject::DataItem // Structure holding per-context state
 		{
 		/* Elements: */
 		public:
-		GLuint bathymetryTextureObjects[2]; // Double-buffered one-component float color texture object holding the vertex-centered bathymetry grid
-		bool bathymetryTextureLinears[2]; // Flags whether the bathymetry textures are currently set up for linear sampling
-		int currentBathymetry; // Index of bathymetry texture containing the most recent bathymetry grid
+		BufferedTexture<2> bathymetry; // Double-buffered one-component float color texture object holding the vertex-centered bathymetry grid
 		unsigned int bathymetryVersion; // Version number of the most recent bathymetry grid
-		GLuint quantityTextureObjects[3]; // Double-buffered three-component color texture object holding the cell-centered conserved quantity grid (w, hu, hv)
-		bool quantityTextureLinears[3]; // Flags whether the quantity textures are currently set up for linear sampling
-		int currentQuantity; // Index of quantity texture containing the most recent conserved quantity grid
+		BufferedTexture<2> snow; // Double-buffered one-component float texture object holding the cell-centered snow height grid
+		BufferedTexture<3> quantity; // Double-buffered three-component color texture object (with one extra "scratch" slot) holding the cell-centered conserved quantity grid (w, hu, hv)
 		GLuint derivativeTextureObject; // Three-component color texture object holding the cell-centered temporal derivative grid
-		GLuint maxStepSizeTextureObjects[2]; // Double-buffered one-component color texture objects to gather the maximum step size for Runge-Kutta integration steps
+		BufferedTexture<2> maxStepSize; // Double-buffered one-component color texture objects to gather the maximum step size for Runge-Kutta integration steps
 		GLuint waterTextureObject; // One-component color texture object to add or remove water to/from the conserved quantity grid
 		GLuint bathymetryFramebufferObject; // Frame buffer used to render the bathymetry surface into the bathymetry grid
 		GLuint derivativeFramebufferObject; // Frame buffer used for temporal derivative computation
@@ -90,10 +109,6 @@ class WaterTable2:public GLObject
 		/* Constructors and destructors: */
 		DataItem(void);
 		virtual ~DataItem(void);
-		
-		/* New methods: */
-		void bindBathymetry(TextureTracker& textureTracker,Shader& shader,int index); // Binds the bathymetry texture of the given index to the given shader using the given texture tracker and sets it up for nearest-neighbor sampling
-		void bindQuantity(TextureTracker& textureTracker,Shader& shader,int index); // Binds the quantity texture of the given index to the given shader using the given texture tracker and sets it up for nearest-neighbor sampling
 		};
 	
 	/* Elements: */
@@ -185,9 +200,11 @@ class WaterTable2:public GLObject
 	GLfloat runSimulationStep(bool forceStepSize,GLContextData& contextData,TextureTracker& textureTracker) const; // Runs a water flow simulation step, always uses maxStepSize if flag is true (may lead to instability); returns step size taken by Runge-Kutta integration step
 	void uploadWaterTextureTransform(Shader& shader) const; // Uploads the water texture transformation into the GLSL 4x4 matrix at the next uniform location in the given shader
 	GLint bindBathymetryTexture(GLContextData& contextData,TextureTracker& textureTracker,bool linearSampling) const; // Binds the bathymetry texture object to the next available texture unit in the given texture tracker and sets filtering mode to linear if flag is true; returns the used texture unit's index
+	GLint bindSnowTexture(GLContextData& contextData,TextureTracker& textureTracker,bool linearSampling) const; // Binds the most recent snow height texture object to the next available texture unit in the given texture tracker and sets filtering mode to linear if flag is true; returns the used texture unit's index
 	GLint bindQuantityTexture(GLContextData& contextData,TextureTracker& textureTracker,bool linearSampling) const; // Binds the most recent conserved quantities texture object to the next available texture unit in the given texture tracker and sets filtering mode to linear if flag is true; returns the used texture unit's index
 	void readBathymetryTexture(GLContextData& contextData,TextureTracker& textureTracker,GLfloat* buffer) const; // Reads the current bathymetry texture into the given buffer
-	void readQuantityTexture(GLContextData& contextData,TextureTracker& textureTracker,GLenum components,GLfloat* buffer) const; // Reads the given component(s) of the current quantity texture into the given buffer
+	void readSnowTexture(GLContextData& contextData,TextureTracker& textureTracker,GLfloat* buffer) const; // Reads the current snow height texture into the given buffer
+	void readQuantityTexture(GLContextData& contextData,TextureTracker& textureTracker,GLenum components,GLfloat* buffer) const; // Reads the given component(s) of the current conserved quantities texture into the given buffer
 	Size getBathymetrySize(void) const // Returns the width or height of the bathymetry grid
 		{
 		return Size(size[0]-1,size[1]-1);

@@ -2,7 +2,7 @@
 WaterTable2 - Class to simulate water flowing over a surface using
 improved water flow simulation based on Saint-Venant system of partial
 differenctial equations.
-Copyright (c) 2012-2024 Oliver Kreylos
+Copyright (c) 2012-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -54,7 +54,7 @@ namespace {
 Helper functions:
 ****************/
 
-GLfloat* makeBuffer(int width,int height,int numComponents,float c0 =0.0f,float c1 =0.0f,float c2 =0.0f,float c3 =0.0f)
+GLfloat* makeBuffer(unsigned int width,unsigned int height,int numComponents,float c0 =0.0f,float c1 =0.0f,float c2 =0.0f,float c3 =0.0f)
 	{
 	/* Create the buffer: */
 	GLfloat* buffer=new GLfloat[height*width*numComponents];
@@ -68,8 +68,8 @@ GLfloat* makeBuffer(int width,int height,int numComponents,float c0 =0.0f,float 
 	
 	/* Fill the buffer: */
 	GLfloat* bPtr=buffer;
-	for(int y=0;y<height;++y)
-		for(int x=0;x<width;++x,bPtr+=numComponents)
+	for(unsigned int y=0;y<height;++y)
+		for(unsigned int x=0;x<width;++x,bPtr+=numComponents)
 			for(int i=0;i<numComponents;++i)
 				bPtr[i]=fill[i];
 	
@@ -96,65 +96,141 @@ void sampleLinear(void)
 
 }
 
+/*********************************************
+Methods of class WaterTable2::BufferedTexture:
+*********************************************/
+
+template <int numSlotsParam>
+inline
+WaterTable2::BufferedTexture<numSlotsParam>::BufferedTexture(
+	GLenum sTextureTarget)
+	:textureTarget(sTextureTarget),
+	 current(0)
+	{
+	/* Generate the buffer slots' OpenGL texture objects: */
+	glGenTextures(numSlots,textureObjects);
+	}
+
+template <int numSlotsParam>
+inline
+WaterTable2::BufferedTexture<numSlotsParam>::~BufferedTexture(
+	void)
+	{
+	/* Destroy the OpenGL texture objects: */
+	glDeleteTextures(numSlots,textureObjects);
+	}
+
+template <int numSlotsParam>
+inline
+void
+WaterTable2::BufferedTexture<numSlotsParam>::init(
+	unsigned int width,
+	unsigned int height,
+	int numComponents,
+	GLenum internalFormat,
+	GLenum externalFormat,
+	float c0,
+	float c1,
+	float c2,
+	float c3)
+	{
+	/* Create a temporary buffer to upload initial texture data: */
+	GLfloat* buffer=makeBuffer(width,height,numComponents,c0,c1,c2,c3);
+	
+	/* Create and intialize the buffer slots' textures: */
+	for(int i=0;i<numSlots;++i)
+		{
+		glBindTexture(textureTarget,textureObjects[i]);
+		
+		/* Set up the texture for nearest-neighbor sampling: */
+		sampleNearest();
+		linears[i]=false;
+		
+		/* Upload the initial texture data: */
+		glTexImage2D(textureTarget,0,internalFormat,width,height,0,externalFormat,GL_FLOAT,buffer);
+		}
+	
+	/* Release the temporary buffer: */
+	delete[] buffer;
+	}
+
+template <int numSlotsParam>
+inline
+void
+WaterTable2::BufferedTexture<numSlotsParam>::setSamplingMode(
+	int slot,
+	bool linear)
+	{
+	/* Check if the sampling mode is different from what's requested: */
+	if(linears[slot]!=linear)
+		{
+		/* Set the requested sampling mode: */
+		if(linear)
+			sampleLinear();
+		else
+			sampleNearest();
+		
+		/* Remember the new sampling mode: */
+		linears[slot]=linear;
+		}
+	}
+
+template <int numSlotsParam>
+inline
+void
+WaterTable2::BufferedTexture<numSlotsParam>::bind(TextureTracker& textureTracker,
+	Shader& shader,
+	int slot,
+	bool linear)
+	{
+	/* Bind the texture slot of the given index to the given shader: */
+	shader.uploadUniform(textureTracker.bindTexture(textureTarget,textureObjects[slot]));
+	
+	/* Set the requested sampling mode: */
+	setSamplingMode(slot,linear);
+	}
+
+template <int numSlotsParam>
+inline
+GLint
+WaterTable2::BufferedTexture<numSlotsParam>::bindCurrent(TextureTracker& textureTracker,
+	bool linear)
+	{
+	/* Bind the current texture slot to the given texture tracker: */
+	GLint textureUnit=textureTracker.bindTexture(textureTarget,textureObjects[current]);
+	
+	/* Set the requested sampling mode: */
+	setSamplingMode(current,linear);
+	
+	return textureUnit;
+	}
+
 /**************************************
 Methods of class WaterTable2::DataItem:
 **************************************/
 
 WaterTable2::DataItem::DataItem(void)
-	:currentBathymetry(0),bathymetryVersion(0),currentQuantity(0),
-	 derivativeTextureObject(0),waterTextureObject(0),
+	:bathymetry(GL_TEXTURE_RECTANGLE_ARB),
+	 bathymetryVersion(0),
+	 snow(GL_TEXTURE_RECTANGLE_ARB),
+	 quantity(GL_TEXTURE_RECTANGLE_ARB),
+	 derivativeTextureObject(0),
+	 maxStepSize(GL_TEXTURE_RECTANGLE_ARB),
+	 waterTextureObject(0),
 	 bathymetryFramebufferObject(0),derivativeFramebufferObject(0),maxStepSizeFramebufferObject(0),integrationFramebufferObject(0),waterFramebufferObject(0)
 	{
-	for(int i=0;i<2;++i)
-		{
-		bathymetryTextureObjects[i]=0;
-		maxStepSizeTextureObjects[i]=0;
-		}
-	for(int i=0;i<3;++i)
-		quantityTextureObjects[i]=0;
 	}
 
 WaterTable2::DataItem::~DataItem(void)
 	{
 	/* Delete all allocated textures and buffers: */
-	glDeleteTextures(2,bathymetryTextureObjects);
-	glDeleteTextures(3,quantityTextureObjects);
 	glDeleteTextures(1,&derivativeTextureObject);
-	glDeleteTextures(2,maxStepSizeTextureObjects);
 	glDeleteTextures(1,&waterTextureObject);
 	glDeleteFramebuffersEXT(1,&bathymetryFramebufferObject);
 	glDeleteFramebuffersEXT(1,&derivativeFramebufferObject);
 	glDeleteFramebuffersEXT(1,&maxStepSizeFramebufferObject);
 	glDeleteFramebuffersEXT(1,&integrationFramebufferObject);
 	glDeleteFramebuffersEXT(1,&waterFramebufferObject);
-	}
-
-void WaterTable2::DataItem::bindBathymetry(TextureTracker& textureTracker,Shader& shader,int index)
-	{
-	/* Bind the bathymetry texture of the given index to the given shader: */
-	shader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,bathymetryTextureObjects[index]));
-	
-	/* Check if the bathymetry texture is currently set up for linear sampling: */
-	if(bathymetryTextureLinears[index])
-		{
-		/* Set it up for nearest-neighbor sampling instead: */
-		sampleNearest();
-		bathymetryTextureLinears[index]=false;
-		}
-	}
-
-void WaterTable2::DataItem::bindQuantity(TextureTracker& textureTracker,Shader& shader,int index)
-	{
-	/* Bind the quantity texture of the given index to the given shader: */
-	shader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,quantityTextureObjects[index]));
-	
-	/* Check if the quantity texture is currently set up for linear sampling: */
-	if(quantityTextureLinears[index])
-		{
-		/* Set it up for nearest-neighbor sampling instead: */
-		sampleNearest();
-		quantityTextureLinears[index]=false;
-		}
 	}
 
 /****************************
@@ -248,8 +324,8 @@ GLfloat WaterTable2::calcDerivative(GLContextData& contextData,TextureTracker& t
 	derivativeShader->uploadUniform(g);
 	derivativeShader->uploadUniform(epsilon);
 	derivativeShader->uploadUniform2v(1,maxPropagationSpeed);
-	dataItem->bindBathymetry(textureTracker,*derivativeShader,dataItem->currentBathymetry);
-	dataItem->bindQuantity(textureTracker,*derivativeShader,quantityTextureIndex);
+	dataItem->bathymetry.bind(textureTracker,*derivativeShader,dataItem->bathymetry.current,false);
+	dataItem->quantity.bind(textureTracker,*derivativeShader,quantityTextureIndex,false);
 	if(mode==Engineering)
 		derivativeShader->uploadUniform(propertyGridCreator->bindPropertyGridTexture(contextData,textureTracker));
 	
@@ -278,7 +354,7 @@ GLfloat WaterTable2::calcDerivative(GLContextData& contextData,TextureTracker& t
 		
 		/* Reduce the maximum step size texture in a sequence of half-reduction steps: */
 		Size reducedSize=size;
-		int currentMaxStepSizeTexture=0;
+		dataItem->maxStepSize.current=0;
 		while(reducedSize[0]>1||reducedSize[1]>1)
 			{
 			/* Set up the maximum step size reduction shader for this reduction step: */
@@ -286,7 +362,7 @@ GLfloat WaterTable2::calcDerivative(GLContextData& contextData,TextureTracker& t
 			textureTracker.reset();
 			
 			/* Set up the simulation frame buffer for maximum step size reduction: */
-			glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-currentMaxStepSizeTexture));
+			glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->maxStepSize.current));
 			
 			/* Reduce the viewport by a factor of two: */
 			Size nextReducedSize((reducedSize[0]+1)/2,(reducedSize[1]+1)/2);
@@ -294,7 +370,7 @@ GLfloat WaterTable2::calcDerivative(GLContextData& contextData,TextureTracker& t
 			dataItem->maxStepSizeShader.uploadUniform(GLfloat(reducedSize[0]-1),GLfloat(reducedSize[1]-1));
 			
 			/* Bind the current max step size texture: */
-			dataItem->maxStepSizeShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->maxStepSizeTextureObjects[currentMaxStepSizeTexture]));
+			dataItem->maxStepSize.bind(textureTracker,dataItem->maxStepSizeShader,dataItem->maxStepSize.current,false);
 			
 			/* Run the reduction step: */
 			glBegin(GL_QUADS);
@@ -309,11 +385,11 @@ GLfloat WaterTable2::calcDerivative(GLContextData& contextData,TextureTracker& t
 			
 			/* Go to the next step: */
 			reducedSize=nextReducedSize;
-			currentMaxStepSizeTexture=1-currentMaxStepSizeTexture;
+			dataItem->maxStepSize.current=1-dataItem->maxStepSize.current;
 			}
 		
 		/* Read the final value written into the last reduced 1x1 frame buffer: */
-		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT+currentMaxStepSizeTexture);
+		glReadBuffer(GL_COLOR_ATTACHMENT0_EXT+dataItem->maxStepSize.current);
 		glReadPixels(0,0,1,1,GL_LUMINANCE,GL_FLOAT,&stepSize);
 		
 		/* Limit the step size to the client-specified range: */
@@ -433,35 +509,14 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	DataItem* dataItem=new DataItem;
 	contextData.addDataItem(this,dataItem);
 	
-	{
-	/* Create the vertex-centered bathymetry textures, replacing the outermost layer of cells with ghost cells: */
-	glGenTextures(2,dataItem->bathymetryTextureObjects);
-	GLfloat* b=makeBuffer(size[0]-1,size[1]-1,1,domain.min[2]);
-	for(int i=0;i<2;++i)
-		{
-		/* Create the texture and set it up for nearest-neighbor sampling: */
-		glBindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetryTextureObjects[i]);
-		sampleNearest();
-		dataItem->bathymetryTextureLinears[i]=false;
-		glTexImage2D(GL_TEXTURE_RECTANGLE_ARB,0,GL_R32F,size[0]-1,size[1]-1,0,GL_LUMINANCE,GL_FLOAT,b);
-		}
-	delete[] b;
-	}
+	/* Create the vertex-centered bathymetry texture, replacing the outermost layer of cells with ghost cells: */
+	dataItem->bathymetry.init(size[0]-1,size[1]-1,1,GL_R32F,GL_LUMINANCE,domain.min[2]);
 	
-	{
-	/* Create the cell-centered quantity state textures: */
-	glGenTextures(3,dataItem->quantityTextureObjects);
-	GLfloat* q=makeBuffer(size[0],size[1],3,domain.min[2],0.0f,0.0f);
-	for(int i=0;i<3;++i)
-		{
-		/* Create the texture and set it up for nearest-neighbor sampling: */
-		glBindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->quantityTextureObjects[i]);
-		sampleNearest();
-		dataItem->quantityTextureLinears[i]=false;
-		glTexImage2D(GL_TEXTURE_RECTANGLE_ARB,0,GL_RGB32F,size[0],size[1],0,GL_RGB,GL_FLOAT,q);
-		}
-	delete[] q;
-	}
+	/* Create the cell-centered snow height texture: */
+	dataItem->snow.init(size[0],size[1],1,GL_R32F,GL_LUMINANCE,0.0f);
+	
+	/* Create the cell-centered quantity state texture: */
+	dataItem->quantity.init(size[0],size[1],3,GL_RGB32F,GL_RGB,domain.min[2],0.0f,0.0f);
 	
 	{
 	/* Create the cell-centered temporal derivative texture: */
@@ -473,18 +528,8 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	delete[] qt;
 	}
 	
-	{
-	/* Create the cell-centered maximum step size gathering textures: */
-	glGenTextures(2,dataItem->maxStepSizeTextureObjects);
-	GLfloat* mss=makeBuffer(size[0],size[1],1,10000.0f);
-	for(int i=0;i<2;++i)
-		{
-		glBindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->maxStepSizeTextureObjects[i]);
-		sampleNearest();
-		glTexImage2D(GL_TEXTURE_RECTANGLE_ARB,0,GL_R32F,size[0],size[1],0,GL_LUMINANCE,GL_FLOAT,mss);
-		}
-	delete[] mss;
-	}
+	/* Create the cell-centered maximum step size gathering texture: */
+	dataItem->maxStepSize.init(size[0],size[1],1,GL_R32F,GL_LUMINANCE,10000.0f);
 	
 	{
 	/* Create the cell-centered water texture: */
@@ -510,7 +555,7 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	
 	/* Attach the bathymetry textures to the bathymetry rendering frame buffer: */
 	for(int i=0;i<2;++i)
-		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetryTextureObjects[i],0);
+		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetry.textureObjects[i],0);
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 	}
@@ -522,7 +567,7 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	
 	/* Attach the derivative and maximum step size textures to the temporal derivative computation frame buffer: */
 	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT,GL_TEXTURE_RECTANGLE_ARB,dataItem->derivativeTextureObject,0);
-	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT1_EXT,GL_TEXTURE_RECTANGLE_ARB,dataItem->maxStepSizeTextureObjects[0],0);
+	glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT1_EXT,GL_TEXTURE_RECTANGLE_ARB,dataItem->maxStepSize.textureObjects[0],0);
 	GLenum drawBuffers[2]={GL_COLOR_ATTACHMENT0_EXT,GL_COLOR_ATTACHMENT1_EXT};
 	glDrawBuffersARB(2,drawBuffers);
 	glReadBuffer(GL_NONE);
@@ -535,7 +580,7 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	
 	/* Attach the maximum step size textures to the maximum step size computation frame buffer: */
 	for(int i=0;i<2;++i)
-		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->maxStepSizeTextureObjects[i],0);
+		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->maxStepSize.textureObjects[i],0);
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 	}
@@ -547,7 +592,7 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	
 	/* Attach the quantity textures to the integration step frame buffer: */
 	for(int i=0;i<3;++i)
-		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->quantityTextureObjects[i],0);
+		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->quantity.textureObjects[i],0);
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 	}
@@ -753,6 +798,12 @@ void WaterTable2::updateBathymetry(GLContextData& contextData,TextureTracker& te
 	/* Check if the current bathymetry texture is outdated: */
 	if(dataItem->bathymetryVersion!=depthImageRenderer->getDepthImageVersion())
 		{
+		/* Retrieve the current and new buffer slots for the bathymetry and quantity textures: */
+		int oldBathymetry=dataItem->bathymetry.current;
+		int newBathymetry=1-oldBathymetry;
+		int oldQuantity=dataItem->quantity.current;
+		int newQuantity=1-oldQuantity;
+		
 		/* Save relevant OpenGL state: */
 		glPushAttrib(GL_VIEWPORT_BIT);
 		GLint currentFrameBuffer;
@@ -762,7 +813,7 @@ void WaterTable2::updateBathymetry(GLContextData& contextData,TextureTracker& te
 		
 		/* Bind the bathymetry rendering frame buffer and clear it: */
 		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->bathymetryFramebufferObject);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->currentBathymetry));
+		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+newBathymetry);
 		glViewport(getBathymetrySize());
 		glClearColor(GLfloat(domain.min[2]),0.0f,0.0f,1.0f);
 		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
@@ -772,15 +823,15 @@ void WaterTable2::updateBathymetry(GLContextData& contextData,TextureTracker& te
 		
 		/* Set up the integration frame buffer to update the conserved quantities based on bathymetry changes: */
 		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->integrationFramebufferObject);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->currentQuantity));
+		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+newQuantity);
 		glViewport(size);
 		
 		/* Set up the bathymetry update shader: */
 		dataItem->bathymetryShader.use();
 		textureTracker.reset();
-		dataItem->bindBathymetry(textureTracker,dataItem->bathymetryShader,dataItem->currentBathymetry);
-		dataItem->bindBathymetry(textureTracker,dataItem->bathymetryShader,1-dataItem->currentBathymetry);
-		dataItem->bindQuantity(textureTracker,dataItem->bathymetryShader,dataItem->currentQuantity);
+		dataItem->bathymetry.bind(textureTracker,dataItem->bathymetryShader,oldBathymetry,false);
+		dataItem->bathymetry.bind(textureTracker,dataItem->bathymetryShader,newBathymetry,false);
+		dataItem->quantity.bind(textureTracker,dataItem->bathymetryShader,oldQuantity,false);
 		
 		/* Run the bathymetry update: */
 		glBegin(GL_QUADS);
@@ -791,9 +842,9 @@ void WaterTable2::updateBathymetry(GLContextData& contextData,TextureTracker& te
 		glEnd();
 		
 		/* Update the bathymetry and quantity grids: */
-		dataItem->currentBathymetry=1-dataItem->currentBathymetry;
+		dataItem->bathymetry.current=newBathymetry;
 		dataItem->bathymetryVersion=depthImageRenderer->getDepthImageVersion();
-		dataItem->currentQuantity=1-dataItem->currentQuantity;
+		dataItem->quantity.current=newQuantity;
 		
 		/* Restore OpenGL state: */
 		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,currentFrameBuffer);
@@ -807,6 +858,12 @@ void WaterTable2::updateBathymetry(const GLfloat* bathymetryGrid,GLContextData& 
 	/* Get the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
 	
+	/* Retrieve the current and new buffer slots for the bathymetry and quantity textures: */
+	int oldBathymetry=dataItem->bathymetry.current;
+	int newBathymetry=1-oldBathymetry;
+	int oldQuantity=dataItem->quantity.current;
+	int newQuantity=1-oldQuantity;
+	
 	/* Save relevant OpenGL state: */
 	glPushAttrib(GL_VIEWPORT_BIT);
 	GLint currentFrameBuffer;
@@ -814,19 +871,19 @@ void WaterTable2::updateBathymetry(const GLfloat* bathymetryGrid,GLContextData& 
 	
 	/* Set up the integration frame buffer to update the conserved quantities based on bathymetry changes: */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->integrationFramebufferObject);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->currentQuantity));
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+newQuantity);
 	glViewport(size);
 	
 	/* Set up the bathymetry update shader: */
 	dataItem->bathymetryShader.use();
 	textureTracker.reset();
-	dataItem->bindBathymetry(textureTracker,dataItem->bathymetryShader,dataItem->currentBathymetry);
+	dataItem->bathymetry.bind(textureTracker,dataItem->bathymetryShader,oldBathymetry,false);
 	
 	/* Bind and upload the given new bathymetry grid: */
-	dataItem->bindBathymetry(textureTracker,dataItem->bathymetryShader,1-dataItem->currentBathymetry);
+	dataItem->bathymetry.bind(textureTracker,dataItem->bathymetryShader,newBathymetry,false);
 	glTexSubImage2D(GL_TEXTURE_RECTANGLE_ARB,0,getBathymetrySize(),GL_LUMINANCE,GL_FLOAT,bathymetryGrid);
 	
-	dataItem->bindQuantity(textureTracker,dataItem->bathymetryShader,dataItem->currentQuantity);
+	dataItem->quantity.bind(textureTracker,dataItem->bathymetryShader,oldQuantity,false);
 	
 	/* Run the bathymetry update: */
 	glBegin(GL_QUADS);
@@ -837,8 +894,8 @@ void WaterTable2::updateBathymetry(const GLfloat* bathymetryGrid,GLContextData& 
 	glEnd();
 
 	/* Update the bathymetry and quantity grids: */
-	dataItem->currentBathymetry=1-dataItem->currentBathymetry;
-	dataItem->currentQuantity=1-dataItem->currentQuantity;
+	dataItem->bathymetry.current=newBathymetry;
+	dataItem->quantity.current=newQuantity;
 
 	/* Restore OpenGL state: */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,currentFrameBuffer);
@@ -850,6 +907,10 @@ void WaterTable2::setWaterLevel(const GLfloat* waterGrid,GLContextData& contextD
 	/* Get the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
 	
+	/* Retrieve the current and new buffer slots for the quantity texture: */
+	int oldQuantity=dataItem->quantity.current;
+	int newQuantity=1-oldQuantity;
+	
 	/* Save relevant OpenGL state: */
 	glPushAttrib(GL_VIEWPORT_BIT);
 	GLint currentFrameBuffer;
@@ -857,14 +918,14 @@ void WaterTable2::setWaterLevel(const GLfloat* waterGrid,GLContextData& contextD
 	
 	/* Set up the integration frame buffer to adapt the new water level to the current bathymetry: */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->integrationFramebufferObject);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->currentQuantity));
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+newQuantity);
 	glViewport(size);
 	
 	/* Set up the water adaptation shader: */
 	dataItem->waterAdaptShader.use();
 	textureTracker.reset();
-	dataItem->bindBathymetry(textureTracker,dataItem->waterAdaptShader,dataItem->currentBathymetry);
-	dataItem->bindQuantity(textureTracker,dataItem->waterAdaptShader,dataItem->currentQuantity);
+	dataItem->bathymetry.bind(textureTracker,dataItem->waterAdaptShader,dataItem->bathymetry.current,false);
+	dataItem->quantity.bind(textureTracker,dataItem->waterAdaptShader,oldQuantity,false);
 	
 	/* Upload the given water level grid into the quantity texture: */
 	glTexSubImage2D(GL_TEXTURE_RECTANGLE_ARB,0,size,GL_RED,GL_FLOAT,waterGrid);
@@ -878,7 +939,7 @@ void WaterTable2::setWaterLevel(const GLfloat* waterGrid,GLContextData& contextD
 	glEnd();
 
 	/* Update the quantity grid: */
-	dataItem->currentQuantity=1-dataItem->currentQuantity;
+	dataItem->quantity.current=newQuantity;
 
 	/* Restore OpenGL state: */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,currentFrameBuffer);
@@ -899,7 +960,7 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 	Step 1: Calculate temporal derivative of most recent quantities.
 	*********************************************************************/
 	
-	GLfloat stepSize=calcDerivative(contextData,textureTracker,dataItem->currentQuantity,!forceStepSize);
+	GLfloat stepSize=calcDerivative(contextData,textureTracker,dataItem->quantity.current,!forceStepSize);
 	
 	// DEBUGGING
 	// std::cout<<stepSize<<' ';
@@ -920,7 +981,7 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 	eulerStepShader->uploadUniform(stepSize);
 	if(mode==Traditional)
 		eulerStepShader->uploadUniform(Math::pow(attenuation,stepSize));
-	dataItem->bindQuantity(textureTracker,*eulerStepShader,dataItem->currentQuantity);
+	dataItem->quantity.bind(textureTracker,*eulerStepShader,dataItem->quantity.current,false);
 	eulerStepShader->uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->derivativeTextureObject));
 	
 	/* Run the Euler integration step: */
@@ -943,7 +1004,7 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 	
 	/* Set up the Runge-Kutta step integration frame buffer: */
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->integrationFramebufferObject);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->currentQuantity));
+	glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->quantity.current));
 	glViewport(size);
 	
 	/* Set up the Runge-Kutta integration step shader: */
@@ -953,8 +1014,8 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 	rungeKuttaStepShader->uploadUniform(stepSize);
 	if(mode==Traditional)
 		rungeKuttaStepShader->uploadUniform(Math::pow(attenuation,stepSize));
-	dataItem->bindQuantity(textureTracker,*rungeKuttaStepShader,dataItem->currentQuantity);
-	dataItem->bindQuantity(textureTracker,*rungeKuttaStepShader,2);
+	dataItem->quantity.bind(textureTracker,*rungeKuttaStepShader,dataItem->quantity.current,false);
+	dataItem->quantity.bind(textureTracker,*rungeKuttaStepShader,2,false);
 	rungeKuttaStepShader->uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->derivativeTextureObject));
 	
 	/* Run the Runge-Kutta integration step: */
@@ -970,7 +1031,7 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 		/* Set up the boundary condition shader to enforce dry boundaries: */
 		dataItem->boundaryShader.use();
 		textureTracker.reset();
-		dataItem->bindBathymetry(textureTracker,dataItem->boundaryShader,dataItem->currentBathymetry);
+		dataItem->bathymetry.bind(textureTracker,dataItem->boundaryShader,dataItem->bathymetry.current,false);
 		
 		/* Run the boundary condition shader on the outermost layer of pixels: */
 		//glColorMask(GL_TRUE,GL_FALSE,GL_FALSE,GL_FALSE);
@@ -984,7 +1045,7 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 		}
 	
 	/* Update the current quantities: */
-	dataItem->currentQuantity=1-dataItem->currentQuantity;
+	dataItem->quantity.current=1-dataItem->quantity.current;
 	
 	if(waterDeposit!=0.0f||!renderFunctions.empty())
 		{
@@ -1026,14 +1087,14 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 		
 		/* Set up the integration frame buffer to update the conserved quantities based on the water texture: */
 		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->integrationFramebufferObject);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->currentQuantity));
+		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->quantity.current));
 		glViewport(size);
 		
 		/* Set up the water update shader: */
 		dataItem->waterShader.use();
 		textureTracker.reset();
-		dataItem->bindBathymetry(textureTracker,dataItem->waterShader,dataItem->currentBathymetry);
-		dataItem->bindQuantity(textureTracker,dataItem->waterShader,dataItem->currentQuantity);
+		dataItem->bathymetry.bind(textureTracker,dataItem->waterShader,dataItem->bathymetry.current,false);
+		dataItem->quantity.bind(textureTracker,dataItem->waterShader,dataItem->quantity.current,false);
 		dataItem->waterShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->waterTextureObject));
 		
 		/* Run the water update: */
@@ -1045,7 +1106,7 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 		glEnd();
 		
 		/* Update the current quantities: */
-		dataItem->currentQuantity=1-dataItem->currentQuantity;
+		dataItem->quantity.current=1-dataItem->quantity.current;
 		}
 	
 	/* Restore OpenGL state: */
@@ -1067,20 +1128,17 @@ GLint WaterTable2::bindBathymetryTexture(GLContextData& contextData,TextureTrack
 	/* Get the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
 	
-	/* Bind the bathymetry texture: */
-	GLint result=textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetryTextureObjects[dataItem->currentBathymetry]);
+	/* Bind the current bathymetry texture to the given texture tracker and return the index of the used texture unit: */
+	return dataItem->bathymetry.bindCurrent(textureTracker,linearSampling);
+	}
+
+GLint WaterTable2::bindSnowTexture(GLContextData& contextData,TextureTracker& textureTracker,bool linearSampling) const
+	{
+	/* Get the data item: */
+	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
 	
-	/* Set up the texture for the requested sampling mode: */
-	if(dataItem->bathymetryTextureLinears[dataItem->currentBathymetry]!=linearSampling)
-		{
-		if(linearSampling)
-			sampleLinear();
-		else
-			sampleNearest();
-		dataItem->bathymetryTextureLinears[dataItem->currentBathymetry]=linearSampling;
-		}
-	
-	return result;
+	/* Bind the current snow height texture to the given texture tracker and return the index of the used texture unit: */
+	return dataItem->snow.bindCurrent(textureTracker,linearSampling);
 	}
 
 GLint WaterTable2::bindQuantityTexture(GLContextData& contextData,TextureTracker& textureTracker,bool linearSampling) const
@@ -1088,20 +1146,8 @@ GLint WaterTable2::bindQuantityTexture(GLContextData& contextData,TextureTracker
 	/* Get the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
 	
-	/* Bind the conserved quantities texture: */
-	GLint result=textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->quantityTextureObjects[dataItem->currentQuantity]);
-	
-	/* Set up the texture for the requested sampling mode: */
-	if(dataItem->quantityTextureLinears[dataItem->currentBathymetry]!=linearSampling)
-		{
-		if(linearSampling)
-			sampleLinear();
-		else
-			sampleNearest();
-		dataItem->quantityTextureLinears[dataItem->currentBathymetry]=linearSampling;
-		}
-	
-	return result;
+	/* Bind the current conserved quantities texture to the given texture tracker and return the index of the used texture unit: */
+	return dataItem->quantity.bindCurrent(textureTracker,linearSampling);
 	}
 
 void WaterTable2::readBathymetryTexture(GLContextData& contextData,TextureTracker& textureTracker,GLfloat* buffer) const
@@ -1109,9 +1155,22 @@ void WaterTable2::readBathymetryTexture(GLContextData& contextData,TextureTracke
 	/* Get the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
 	
-	/* Bind the bathymetry texture: */
+	/* Bind the current bathymetry texture: */
 	textureTracker.reset();
-	textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetryTextureObjects[dataItem->currentBathymetry]);
+	textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetry.textureObjects[dataItem->bathymetry.current]);
+	
+	/* Read the texture image into the given buffer: */
+	glGetTexImage(GL_TEXTURE_RECTANGLE_ARB,0,GL_RED,GL_FLOAT,buffer);
+	}
+
+void WaterTable2::readSnowTexture(GLContextData& contextData,TextureTracker& textureTracker,GLfloat* buffer) const
+	{
+	/* Get the data item: */
+	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
+	
+	/* Bind the current snow height texture: */
+	textureTracker.reset();
+	textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->snow.textureObjects[dataItem->snow.current]);
 	
 	/* Read the texture image into the given buffer: */
 	glGetTexImage(GL_TEXTURE_RECTANGLE_ARB,0,GL_RED,GL_FLOAT,buffer);
@@ -1122,10 +1181,10 @@ void WaterTable2::readQuantityTexture(GLContextData& contextData,TextureTracker&
 	/* Get the data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
 	
-	/* Bind the quantity texture: */
+	/* Bind the current conserved quantities texture: */
 	textureTracker.reset();
-	textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->quantityTextureObjects[dataItem->currentQuantity]);
+	textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->quantity.textureObjects[dataItem->quantity.current]);
 	
-	/* Read the texture image into the given buffer: */
+	/* Read the requested components of the texture image into the given buffer: */
 	glGetTexImage(GL_TEXTURE_RECTANGLE_ARB,0,components,GL_FLOAT,buffer);
 	}
