@@ -131,6 +131,8 @@ class WaterTable2:public GLObject
 	PTransform waterTextureTransform; // Projective transformation from camera space to water level texture space
 	GLfloat waterTextureTransformMatrix[16]; // Same in GLSL-compatible format
 	std::vector<const AddWaterFunction*> renderFunctions; // A list of functions that are called after each water flow simulation step to locally add or remove water from the water table
+	GLfloat snowLine; // The elevation of the snow line relative to the base plane
+	GLfloat snowMelt; // The rate of snow melt in elevation units per second
 	GLfloat waterDeposit; // A fixed amount of water added at every iteration of the flow simulation, for evaporation etc.
 	bool dryBoundary; // Flag whether to enforce dry boundary conditions at the end of each simulation step
 	
@@ -188,6 +190,16 @@ class WaterTable2:public GLObject
 		}
 	void addRenderFunction(const AddWaterFunction* newRenderFunction); // Adds a render function to the list; object remains owned by caller
 	void removeRenderFunction(const AddWaterFunction* removeRenderFunction); // Removes the given render function from the list but does not delete it
+	GLfloat getSnowLine(void) const // Returns the elevation of the snow line relative to the base plane
+		{
+		return snowLine;
+		}
+	void setSnowLine(GLfloat newSnowLine); // Sets the elevation of the snow line relative to the base plane
+	GLfloat getSnowMelt(void) const // Returns the snow melt rate in elevation units per second
+		{
+		return snowMelt;
+		}
+	void setSnowMelt(GLfloat newSnowMelt); // Sets the snow melt rate in elevation units per second
 	GLfloat getWaterDeposit(void) const // Returns the current amount of water deposited on every simulation step
 		{
 		return waterDeposit;

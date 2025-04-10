@@ -1,7 +1,7 @@
 /***********************************************************************
 SurfaceAddWaterColor - Shader fragment to modify the base color of a
 surface if the current fragment is under water.
-Copyright (c) 2012-2015 Oliver Kreylos
+Copyright (c) 2012-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -141,6 +141,7 @@ Water shading function:
 **********************/
 
 uniform sampler2DRect bathymetrySampler;
+uniform sampler2DRect snowSampler;
 uniform sampler2DRect quantitySampler;
 uniform vec2 waterCellSize;
 uniform float waterOpacity;
@@ -156,14 +157,42 @@ fixed texture coordinates:
 void addWaterColor(in vec2 fragCoord,inout vec4 baseColor)
 	{
 	/* Calculate the water column height above this fragment: */
-	float b=(texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-1.0,waterTexCoord.y-1.0)).r+
-	         texture2DRect(bathymetrySampler,vec2(waterTexCoord.x,waterTexCoord.y-1.0)).r+
-	         texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-1.0,waterTexCoord.y)).r+
-	         texture2DRect(bathymetrySampler,waterTexCoord.xy).r)*0.25;
+	#if 0
+	float b0=texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-1.0,waterTexCoord.y-1.0)).r;
+	float b1=texture2DRect(bathymetrySampler,vec2(waterTexCoord.x,waterTexCoord.y-1.0)).r;
+	float b2=texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-1.0,waterTexCoord.y)).r;
+	float b3=texture2DRect(bathymetrySampler,waterTexCoord.xy).r;
+	float b=(b0+b1+b2+b3)*0.25;
+	#else
+	float b=texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-0.5,waterTexCoord.y-0.5)).r;
+	#endif
 	float waterLevel=texture2DRect(quantitySampler,waterTexCoord).r-b;
 	
-	/* Check if the surface is under water: */
-	if(waterLevel>0.0)
+	/* Retrieve the snow height above this fragment: */
+	float snowLevel=texture2DRect(snowSampler,waterTexCoord).r;
+	
+	/* Check if the surface is under water and/or snow: */
+	if(snowLevel>1.0e-4)
+		{
+		/* Calculate the snow color: */
+		#if 0
+		float sxp=texture2DRect(snowSampler,vec2(waterTexCoord.x+1.0,waterTexCoord.y)).r+texture2DRect(bathymetrySampler,vec2(waterTexCoord.x+0.5,waterTexCoord.y-0.5)).r;
+		float sxm=texture2DRect(snowSampler,vec2(waterTexCoord.x-1.0,waterTexCoord.y)).r+texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-1.5,waterTexCoord.y-0.5)).r;
+		float syp=texture2DRect(snowSampler,vec2(waterTexCoord.x,waterTexCoord.y+1.0)).r+texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-0.5,waterTexCoord.y+0.5)).r;
+		float sym=texture2DRect(snowSampler,vec2(waterTexCoord.x,waterTexCoord.y-1.0)).r+texture2DRect(bathymetrySampler,vec2(waterTexCoord.x-0.5,waterTexCoord.y-1.5)).r;
+		vec3 sn=normalize(vec3((sxm-sxp)*waterCellSize.y,(sym-syp)*waterCellSize.x,2.0*waterCellSize.x*waterCellSize.y));
+		float colorS=pow(dot(sn,normalize(vec3(0.075,0.075,1.0))),100.0)*0.25+0.75;
+		
+		vec4 snowColor=vec4(colorS,colorS,colorS,1.0);
+		#else
+		vec4 snowColor=vec4(1.0,1.0,1.0,1.0);
+		#endif
+		
+		/* Mix the snow color with the base surface color based on the snow level: */
+		baseColor=mix(baseColor,snowColor,min(snowLevel*waterOpacity*2.0,1.0));
+		}
+	
+	if(waterLevel>snowLevel+1.0e-4)
 		{
 		/* Calculate the water color: */
 		// float colorW=max(snoise(vec3(fragCoord*0.05,waterAnimationTime*0.25)),0.0); // Simple noise function
@@ -181,7 +210,7 @@ void addWaterColor(in vec2 fragCoord,inout vec4 baseColor)
 		// vec4 waterColor=vec4(0.0,0.0,1.0,1.0); // Blue
 		
 		/* Mix the water color with the base surface color based on the water level: */
-		baseColor=mix(baseColor,waterColor,min(waterLevel*waterOpacity,1.0));
+		baseColor=mix(baseColor,waterColor,min((waterLevel-snowLevel)*waterOpacity,1.0));
 		}
 	}
 

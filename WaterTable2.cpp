@@ -429,6 +429,10 @@ WaterTable2::WaterTable2(const Size& sSize,const GLfloat sCellSize[2])
 	attenuation=127.0f/128.0f; // 31.0f/32.0f;
 	maxStepSize=1.0f;
 	
+	/* Initialize snow pack simulation: */
+	snowLine=1000.0f;
+	snowMelt=0.1f;
+	
 	/* Initialize the water deposit amount: */
 	waterDeposit=0.0f;
 	}
@@ -556,6 +560,8 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	/* Attach the bathymetry textures to the bathymetry rendering frame buffer: */
 	for(int i=0;i<2;++i)
 		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetry.textureObjects[i],0);
+	
+	/* Active buffers will be set up during rendering: */
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 	}
@@ -581,6 +587,8 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	/* Attach the maximum step size textures to the maximum step size computation frame buffer: */
 	for(int i=0;i<2;++i)
 		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->maxStepSize.textureObjects[i],0);
+	
+	/* Active buffers will be set up during rendering: */
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 	}
@@ -590,9 +598,15 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	glGenFramebuffersEXT(1,&dataItem->integrationFramebufferObject);
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->integrationFramebufferObject);
 	
-	/* Attach the quantity textures to the integration step frame buffer: */
+	/* Attach the conserved quantity textures to the integration step frame buffer: */
 	for(int i=0;i<3;++i)
 		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->quantity.textureObjects[i],0);
+	
+	/* Attach the snow height textures to the integration step frame buffer: */
+	for(int i=0;i<2;++i)
+		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,GL_COLOR_ATTACHMENT0_EXT+3+i,GL_TEXTURE_RECTANGLE_ARB,dataItem->snow.textureObjects[i],0);
+	
+	/* Active buffers will be set up during rendering: */
 	glDrawBuffer(GL_NONE);
 	glReadBuffer(GL_NONE);
 	}
@@ -718,8 +732,11 @@ void WaterTable2::initContext(GLContextData& contextData) const
 	dataItem->waterShader.addShader(compileFragmentShader("Water2WaterUpdateShader"));
 	dataItem->waterShader.link();
 	dataItem->waterShader.setUniformLocation("bathymetrySampler");
+	dataItem->waterShader.setUniformLocation("snowSampler");
 	dataItem->waterShader.setUniformLocation("quantitySampler");
 	dataItem->waterShader.setUniformLocation("waterSampler");
+	dataItem->waterShader.setUniformLocation("snowLine");
+	dataItem->waterShader.setUniformLocation("snowMelt");
 	
 	/* Delete the shared vertex shader: */
 	glDeleteObjectARB(vertexShader);
@@ -778,6 +795,16 @@ void WaterTable2::removeRenderFunction(const AddWaterFunction* removeRenderFunct
 			renderFunctions.erase(rfIt);
 			break;
 			}
+	}
+
+void WaterTable2::setSnowLine(GLfloat newSnowLine)
+	{
+	snowLine=newSnowLine;
+	}
+
+void WaterTable2::setSnowMelt(GLfloat newSnowMelt)
+	{
+	snowMelt=newSnowMelt;
 	}
 
 void WaterTable2::setWaterDeposit(GLfloat newWaterDeposit)
@@ -1087,15 +1114,21 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 		
 		/* Set up the integration frame buffer to update the conserved quantities based on the water texture: */
 		glBindFramebufferEXT(GL_FRAMEBUFFER_EXT,dataItem->integrationFramebufferObject);
-		glDrawBuffer(GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->quantity.current));
+		GLenum drawBuffers[2];
+		drawBuffers[0]=GL_COLOR_ATTACHMENT0_EXT+(1-dataItem->quantity.current);
+		drawBuffers[1]=GL_COLOR_ATTACHMENT0_EXT+3+(1-dataItem->snow.current);
+		glDrawBuffersARB(2,drawBuffers);
 		glViewport(size);
 		
 		/* Set up the water update shader: */
 		dataItem->waterShader.use();
 		textureTracker.reset();
 		dataItem->bathymetry.bind(textureTracker,dataItem->waterShader,dataItem->bathymetry.current,false);
+		dataItem->snow.bind(textureTracker,dataItem->waterShader,dataItem->snow.current,false);
 		dataItem->quantity.bind(textureTracker,dataItem->waterShader,dataItem->quantity.current,false);
 		dataItem->waterShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->waterTextureObject));
+		dataItem->waterShader.uploadUniform(snowLine);
+		dataItem->waterShader.uploadUniform(snowMelt*stepSize);
 		
 		/* Run the water update: */
 		glBegin(GL_QUADS);
@@ -1105,7 +1138,8 @@ GLfloat WaterTable2::runSimulationStep(bool forceStepSize,GLContextData& context
 		glVertex2i(0,size[1]);
 		glEnd();
 		
-		/* Update the current quantities: */
+		/* Update the snow height and current quantities: */
+		dataItem->snow.current=1-dataItem->snow.current;
 		dataItem->quantity.current=1-dataItem->quantity.current;
 		}
 	

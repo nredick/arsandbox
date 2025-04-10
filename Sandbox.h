@@ -1,6 +1,6 @@
 /***********************************************************************
 Sandbox - Vrui application to drive an augmented reality sandbox.
-Copyright (c) 2012-2024 Oliver Kreylos
+Copyright (c) 2012-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -239,6 +239,7 @@ class Sandbox:public Vrui::Application,public GLObject
 	void rawDepthFrameDispatcher(const Kinect::FrameBuffer& frameBuffer); // Callback receiving raw depth frames from the Kinect camera; forwards them to the frame filter and rain maker objects
 	void receiveFilteredFrame(const Kinect::FrameBuffer& frameBuffer); // Callback receiving filtered depth frames from the filter object
 	void toggleDEM(DEM* dem); // Sets or toggles the currently active DEM
+	void renderRainDisk(const Point& center,Scalar radius,GLfloat strength) const; // Renders a disk of rain, during rain processing
 	void addWater(GLContextData& contextData) const; // Function to render geometry that adds water to the water table
 	void pauseUpdatesCallback(GLMotif::ToggleButton::ValueChangedCallbackData* cbData);
 	void loadGridPropertyFileCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);

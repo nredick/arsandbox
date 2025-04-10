@@ -1,7 +1,7 @@
 /***********************************************************************
 SurfaceRenderer - Class to render a surface defined by a regular grid in
 depth image space.
-Copyright (c) 2012-2024 Oliver Kreylos
+Copyright (c) 2012-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -459,6 +459,7 @@ void SurfaceRenderer::updateSinglePassSurfaceShader(const GLLightTracker& lt,Sur
 			/* Query water handling uniform variables: */
 			shader.setUniformLocation("waterTransform");
 			shader.setUniformLocation("bathymetrySampler");
+			shader.setUniformLocation("snowSampler");
 			shader.setUniformLocation("quantitySampler");
 			shader.setUniformLocation("waterCellSize");
 			shader.setUniformLocation("waterOpacity");
@@ -878,7 +879,10 @@ void SurfaceRenderer::renderSinglePass(const SurfaceRenderer::Rect& viewport,con
 		/* Bind the bathymetry texture: */
 		dataItem->heightMapShader.uploadUniform(waterTable->bindBathymetryTexture(contextData,textureTracker,true));
 		
-		/* Bind the quantities texture: */
+		/* Bind the snow height texture: */
+		dataItem->heightMapShader.uploadUniform(waterTable->bindSnowTexture(contextData,textureTracker,true));
+		
+		/* Bind the conserved quantities texture: */
 		dataItem->heightMapShader.uploadUniform(waterTable->bindQuantityTexture(contextData,textureTracker,true));
 		
 		/* Upload the water grid cell size for normal vector calculation: */

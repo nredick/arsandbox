@@ -1,6 +1,6 @@
 /***********************************************************************
 Sandbox - Vrui application to drive an augmented reality sandbox.
-Copyright (c) 2012-2024 Oliver Kreylos
+Copyright (c) 2012-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -269,6 +269,51 @@ void Sandbox::toggleDEM(DEM* dem)
 			rsIt->surfaceRenderer->setDem(activeDem);
 	}
 
+void Sandbox::renderRainDisk(const Point& center,Scalar radius,GLfloat strength) const
+	{
+	/* Create a local coordinate frame to render rain disks: */
+	Vector x=waterTable->getBaseTransform().inverseTransform(Vector(1,0,0));
+	Vector y=waterTable->getBaseTransform().inverseTransform(Vector(0,1,0));
+	
+	/* Set up a disk with smooth decay around the edge: */
+	int numSegments=32;
+	Scalar fudge=Math::sqrt(Math::sqr(waterTable->getCellSize()[0])+Math::sqr(waterTable->getCellSize()[1]))*Scalar(2);
+	Scalar inner=Math::max(radius-fudge*Scalar(0.5),Scalar(0));
+	Scalar outer=radius+fudge*Scalar(0.5);
+	
+	/* Render the inner disk: */
+	glBegin(GL_POLYGON);
+	glVertexAttrib1fARB(1,strength);
+	for(int i=0;i<numSegments;++i)
+		{
+		Scalar angle=Scalar(2)*Math::Constants<Scalar>::pi*Scalar(i)/Scalar(numSegments);
+		glVertex(center+x*(Math::cos(angle)*inner)+y*(Math::sin(angle)*inner));
+		}
+	glEnd();
+	
+	/* Render the smooth edge: */
+	glBegin(GL_QUAD_STRIP);
+	glVertexAttrib1fARB(1,0.0f);
+	glVertex(center+x*outer);
+	glVertexAttrib1fARB(1,strength);
+	glVertex(center+x*inner);
+	for(int i=1;i<numSegments;++i)
+		{
+		Scalar angle=Scalar(2)*Math::Constants<Scalar>::pi*Scalar(i)/Scalar(numSegments);
+		Scalar c=Math::cos(angle);
+		Scalar s=Math::sin(angle);
+		glVertexAttrib1fARB(1,0.0f);
+		glVertex(center+x*(c*outer)+y*(s*outer));
+		glVertexAttrib1fARB(1,strength);
+		glVertex(center+x*(c*inner)+y*(s*inner));
+		}
+	glVertexAttrib1fARB(1,0.0f);
+	glVertex(center+x*outer);
+	glVertexAttrib1fARB(1,strength);
+	glVertex(center+x*inner);
+	glEnd();
+	}
+
 void Sandbox::addWater(GLContextData& contextData) const
 	{
 	/* Check if the most recent rain object list is not empty: */
@@ -285,17 +330,13 @@ void Sandbox::addWater(GLContextData& contextData) const
 		x.normalize();
 		y.normalize();
 		
-		glVertexAttrib1fARB(1,rainStrength/waterSpeed);
+		GLfloat rain=rainStrength/waterSpeed;
+		glVertexAttrib1fARB(1,rain);
+		
 		for(HandExtractor::HandList::const_iterator hIt=handExtractor->getLockedExtractedHands().begin();hIt!=handExtractor->getLockedExtractedHands().end();++hIt)
 			{
 			/* Render a rain disk approximating the hand: */
-			glBegin(GL_POLYGON);
-			for(int i=0;i<32;++i)
-				{
-				Scalar angle=Scalar(2)*Math::Constants<Scalar>::pi*Scalar(i)/Scalar(32);
-				glVertex(hIt->center+x*(Math::cos(angle)*hIt->radius*0.75)+y*(Math::sin(angle)*hIt->radius*0.75));
-				}
-			glEnd();
+			renderRainDisk(hIt->center,hIt->radius*Scalar(0.75),rainStrength/waterSpeed);
 			}
 		
 		glPopAttrib();
@@ -689,6 +730,8 @@ Sandbox::Sandbox(int& argc,char**& argv)
 	float waterMinTimeStep=cfg.retrieveValue<float>("./waterMinTimeStep",0.0f);
 	Math::Interval<double> rainElevationRange=cfg.retrieveValue<Math::Interval<double> >("./rainElevationRange",Math::Interval<double>(-1000.0,1000.0));
 	rainStrength=cfg.retrieveValue<GLfloat>("./rainStrength",0.25f);
+	double snowLine=cfg.retrieveValue<double>("./snowLine",1000.0);
+	double snowMelt=cfg.retrieveValue<double>("./snowMelt",0.1);
 	double evaporationRate=cfg.retrieveValue<double>("./evaporationRate",0.0);
 	float demDistScale=cfg.retrieveValue<float>("./demDistScale",1.0f);
 	std::string controlPipeName=cfg.retrieveString("./controlPipeName","");
@@ -818,6 +861,16 @@ Sandbox::Sandbox(int& argc,char**& argv)
 				{
 				++i;
 				rainStrength=GLfloat(atof(argv[i]));
+				}
+			else if(strcasecmp(argv[i]+1,"sl")==0)
+				{
+				++i;
+				snowLine=atof(argv[i]);
+				}
+			else if(strcasecmp(argv[i]+1,"sm")==0)
+				{
+				++i;
+				snowMelt=atof(argv[i]);
 				}
 			else if(strcasecmp(argv[i]+1,"evr")==0)
 				{
@@ -1083,6 +1136,8 @@ Sandbox::Sandbox(int& argc,char**& argv)
 			waterTable->setMode(WaterTable2::Engineering);
 		if(waterMinTimeStep>0.0f)
 			waterTable->forceMinStepSize(waterMinTimeStep);
+		waterTable->setSnowLine(snowLine);
+		waterTable->setSnowMelt(snowMelt);
 		waterTable->setWaterDeposit(evaporationRate);
 		
 		/* Create the property grid creator object: */
