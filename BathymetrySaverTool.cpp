@@ -1,7 +1,7 @@
 /***********************************************************************
 BathymetrySaverTool - Tool to save the current bathymetry grid of an
 augmented reality sandbox to a file or network socket.
-Copyright (c) 2016-2024 Oliver Kreylos
+Copyright (c) 2016-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -579,7 +579,7 @@ void BathymetrySaverTool::postUpdate(void) const
 	// std::cout<<std::endl;
 	}
 
-void BathymetrySaverTool::readBackCallback(GLfloat* bathymetryBuffer,GLfloat* waterLevelBuffer,void* userData)
+void BathymetrySaverTool::readBackCallback(GLfloat* bathymetryBuffer,GLfloat*,GLfloat*,void* userData)
 	{
 	BathymetrySaverTool* thisPtr=static_cast<BathymetrySaverTool*>(userData);
 	
@@ -644,6 +644,6 @@ void BathymetrySaverTool::buttonCallback(int buttonSlotIndex,Vrui::InputDevice::
 	if(cbData->newButtonState)
 		{
 		/* Request a bathymetry grid from the water table: */
-		application->gridRequest.requestGrids(bathymetryBuffer,0,&BathymetrySaverTool::readBackCallback,this);
+		application->gridRequest.requestGrids(bathymetryBuffer,0,0,&BathymetrySaverTool::readBackCallback,this);
 		}
 	}

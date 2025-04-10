@@ -1,7 +1,7 @@
 /***********************************************************************
 BathymetrySaverTool - Tool to save the current bathymetry grid of an
 augmented reality sandbox to a file or network socket.
-Copyright (c) 2016-2019 Oliver Kreylos
+Copyright (c) 2016-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -93,7 +93,7 @@ class BathymetrySaverTool:public Vrui::Tool,public Vrui::Application::Tool<Sandb
 	/* Private methods: */
 	void writeDEMFile(void) const; // Writes the bathymetry grid to a file in USGS DEM format
 	void postUpdate(void) const; // Sends an update message to a web server
-	static void readBackCallback(GLfloat* bathymetryBuffer,GLfloat* waterLevelBuffer,void* userData); // Callback when a grid has been read back from the GPU
+	static void readBackCallback(GLfloat* bathymetryBuffer,GLfloat* waterLevelBuffer,GLfloat*,void* userData); // Callback when a grid has been read back from the GPU
 	
 	/* Constructors and destructors: */
 	public:

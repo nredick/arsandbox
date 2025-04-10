@@ -363,6 +363,16 @@ void Sandbox::showWaterControlDialogCallback(Misc::CallbackData* cbData)
 	Vrui::popupPrimaryWidget(waterControlDialog);
 	}
 
+void Sandbox::snowLineSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData)
+	{
+	waterTable->setSnowLine(GLfloat(cbData->value));
+	}
+
+void Sandbox::snowMeltSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData)
+	{
+	waterTable->setSnowMelt(GLfloat(cbData->value));
+	}
+
 void Sandbox::waterSpeedSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData)
 	{
 	waterSpeed=cbData->value;
@@ -449,6 +459,29 @@ GLMotif::PopupWindow* Sandbox::createWaterControlDialog(void)
 	waterControlDialog->setOrientation(GLMotif::RowColumn::VERTICAL);
 	waterControlDialog->setPacking(GLMotif::RowColumn::PACK_TIGHT);
 	waterControlDialog->setNumMinorWidgets(2);
+	
+	new GLMotif::Label("SnowLineLabel",waterControlDialog,"Snow Line");
+	
+	snowLineSlider=new GLMotif::TextFieldSlider("SnowLineSlider",waterControlDialog,8,ss.fontHeight*10.0f);
+	snowLineSlider->getTextField()->setFieldWidth(7);
+	snowLineSlider->getTextField()->setPrecision(2);
+	snowLineSlider->getTextField()->setFloatFormat(GLMotif::TextField::FIXED);
+	snowLineSlider->setValueRange(elevationRange.getMin(),elevationRange.getMax(),0.01);
+	snowLineSlider->setValue(waterTable->getSnowLine());
+	snowLineSlider->getValueChangedCallbacks().add(this,&Sandbox::snowLineSliderCallback);
+	
+	new GLMotif::Label("SnowMeltLabel",waterControlDialog,"Snow Melt");
+	
+	snowMeltSlider=new GLMotif::TextFieldSlider("SnowMeltSlider",waterControlDialog,8,ss.fontHeight*10.0f);
+	snowMeltSlider->getTextField()->setFieldWidth(7);
+	snowMeltSlider->getTextField()->setPrecision(2);
+	snowMeltSlider->getTextField()->setFloatFormat(GLMotif::TextField::FIXED);
+	
+	double maxSnowMelt=Math::pow(10.0,Math::ceil(Math::log10(double(waterTable->getSnowMelt())))+1.0);
+	snowMeltSlider->setValueRange(0.0,maxSnowMelt,maxSnowMelt/100.0);
+	snowMeltSlider->getSlider()->addNotch(waterTable->getSnowMelt());
+	snowMeltSlider->setValue(waterTable->getSnowMelt());
+	snowMeltSlider->getValueChangedCallbacks().add(this,&Sandbox::snowMeltSliderCallback);
 	
 	new GLMotif::Label("WaterSpeedLabel",waterControlDialog,"Speed");
 	
@@ -629,6 +662,10 @@ void printUsage(void)
 	std::cout<<"     Sets the minimum time step for water simulation to ensure frame"<<std::endl;
 	std::cout<<"     rates at the cost of water simulation accuracy in high-flow"<<std::endl;
 	std::cout<<"     regions"<<std::endl;
+	std::cout<<"  -sl <snow line>"<<std::endl;
+	std::cout<<"     Sets the elevation above which precipitation lands as snow instead of rain"<<std::endl;
+	std::cout<<"  -sm <snow melt rate>"<<std::endl;
+	std::cout<<"     Sets the rate at which snow melts in cm/s"<<std::endl;
 	std::cout<<"  -rer <min rain elevation> <max rain elevation>"<<std::endl;
 	std::cout<<"     Sets the elevation range of the rain cloud level relative to the"<<std::endl;
 	std::cout<<"     ground plane in cm"<<std::endl;
@@ -647,7 +684,7 @@ void printUsage(void)
 	std::cout<<"     following rendering settings are applied"<<std::endl;
 	std::cout<<"     Default: 0"<<std::endl;
 	std::cout<<"  -fpv [projector transform file name]"<<std::endl;
-	std::cout<<"     Fixes the navigation transformation so that Kinect camera and"<<std::endl;
+	std::cout<<"     Fixes the navigation transformation so that the 3D camera and"<<std::endl;
 	std::cout<<"     projector are aligned, as defined by the projector transform file"<<std::endl;
 	std::cout<<"     of the given name"<<std::endl;
 	std::cout<<"     Default projector transform file name: "<<CONFIG_CONFIGDIR<<'/'<<CONFIG_DEFAULTPROJECTIONMATRIXFILENAME<<std::endl;
@@ -664,19 +701,19 @@ void printUsage(void)
 	std::cout<<"  -uhm [elevation color map file name]"<<std::endl;
 	std::cout<<"     Enables elevation color mapping and loads the elevation color map from"<<std::endl;
 	std::cout<<"     the file of the given name"<<std::endl;
-	std::cout<<"     Default elevation color  map file name: "<<CONFIG_CONFIGDIR<<'/'<<CONFIG_DEFAULTHEIGHTCOLORMAPFILENAME<<std::endl;
+	std::cout<<"     Default elevation color map file name: "<<CONFIG_CONFIGDIR<<'/'<<CONFIG_DEFAULTHEIGHTCOLORMAPFILENAME<<std::endl;
 	std::cout<<"  -ncl"<<std::endl;
 	std::cout<<"     Disables topographic contour lines"<<std::endl;
 	std::cout<<"  -ucl [contour line spacing]"<<std::endl;
 	std::cout<<"     Enables topographic contour lines and sets the elevation distance between"<<std::endl;
-	std::cout<<"     adjacent contour lines to the given value in cm"<<std::endl;
+	std::cout<<"     adjacent contour lines to the given value in cm in physical space"<<std::endl;
 	std::cout<<"     Default contour line spacing: 0.75"<<std::endl;
 	std::cout<<"  -rws"<<std::endl;
 	std::cout<<"     Renders water surface as geometric surface"<<std::endl;
 	std::cout<<"  -rwt"<<std::endl;
 	std::cout<<"     Renders water surface as texture"<<std::endl;
 	std::cout<<"  -wo <water opacity>"<<std::endl;
-	std::cout<<"     Sets the water depth at which water appears opaque in cm"<<std::endl;
+	std::cout<<"     Sets the water depth at which water appears opaque in cm in physical space"<<std::endl;
 	std::cout<<"     Default: 2.0"<<std::endl;
 	std::cout<<"  -cp <control pipe name>"<<std::endl;
 	std::cout<<"     Sets the name of a named POSIX pipe from which to read control commands"<<std::endl;
@@ -698,7 +735,7 @@ Sandbox::Sandbox(int& argc,char**& argv)
 	 mainMenu(0),pauseUpdatesToggle(0),
 	 gridPropertyFileHelper(Vrui::getWidgetManager(),"GridProperty.tiff",".tif;.tiff"),
 	 waterControlDialog(0),
-	 waterSpeedSlider(0),waterMaxStepsSlider(0),frameRateTextField(0),waterAttenuationSlider(0),
+	 snowLineSlider(0),waterSpeedSlider(0),waterMaxStepsSlider(0),frameRateTextField(0),waterAttenuationSlider(0),
 	 controlPipeFd(-1)
 	{
 	/* Read the sandbox's default configuration parameters: */
@@ -714,7 +751,7 @@ Sandbox::Sandbox(int& argc,char**& argv)
 	sandboxLayoutFileName.push_back('/');
 	sandboxLayoutFileName.append(CONFIG_DEFAULTBOXLAYOUTFILENAME);
 	sandboxLayoutFileName=cfg.retrieveString("./sandboxLayoutFileName",sandboxLayoutFileName);
-	Math::Interval<double> elevationRange=cfg.retrieveValue<Math::Interval<double> >("./elevationRange",Math::Interval<double>(-1000.0,1000.0));
+	elevationRange=cfg.retrieveValue<Math::Interval<double> >("./elevationRange",Math::Interval<double>(-1000.0,1000.0));
 	bool haveHeightMapPlane=cfg.hasTag("./heightMapPlane");
 	Plane heightMapPlane;
 	if(haveHeightMapPlane)
@@ -731,7 +768,7 @@ Sandbox::Sandbox(int& argc,char**& argv)
 	Math::Interval<double> rainElevationRange=cfg.retrieveValue<Math::Interval<double> >("./rainElevationRange",Math::Interval<double>(-1000.0,1000.0));
 	rainStrength=cfg.retrieveValue<GLfloat>("./rainStrength",0.25f);
 	double snowLine=cfg.retrieveValue<double>("./snowLine",1000.0);
-	double snowMelt=cfg.retrieveValue<double>("./snowMelt",0.1);
+	double snowMelt=cfg.retrieveValue<double>("./snowMelt",0.0625);
 	double evaporationRate=cfg.retrieveValue<double>("./evaporationRate",0.0);
 	float demDistScale=cfg.retrieveValue<float>("./demDistScale",1.0f);
 	std::string controlPipeName=cfg.retrieveString("./controlPipeName","");
@@ -1088,6 +1125,8 @@ Sandbox::Sandbox(int& argc,char**& argv)
 			rsIt->projectorTransform.getMatrix()(i,3)*=sf;
 		}
 	rainStrength*=sf;
+	snowLine*=sf;
+	snowMelt*=sf;
 	evaporationRate*=sf;
 	demDistScale*=sf;
 	
@@ -1136,6 +1175,7 @@ Sandbox::Sandbox(int& argc,char**& argv)
 			waterTable->setMode(WaterTable2::Engineering);
 		if(waterMinTimeStep>0.0f)
 			waterTable->forceMinStepSize(waterMinTimeStep);
+		snowLine=Math::clamp(snowLine,elevationRange.getMin(),elevationRange.getMax());
 		waterTable->setSnowLine(snowLine);
 		waterTable->setSnowMelt(snowMelt);
 		waterTable->setWaterDeposit(evaporationRate);
@@ -1386,7 +1426,41 @@ void Sandbox::frame(void)
 					continue;
 				
 				/* Parse the command: */
-				if(isToken(tokens[0],"waterSpeed"))
+				if(isToken(tokens[0],"snowLine"))
+					{
+					if(tokens.size()==2)
+						{
+						double snowLine=atof(tokens[1].c_str());
+						if(snowLineSlider!=0)
+							{
+							/* Set the new value in the slider first to clamp it to the valid range: */
+							snowLineSlider->setValue(snowLine);
+							snowLine=snowLineSlider->getValue();
+							}
+						if(waterTable!=0)
+							waterTable->setSnowLine(GLfloat(snowLine));
+						}
+					else
+						std::cerr<<"Wrong number of arguments for waterSpeed control pipe command"<<std::endl;
+					}
+				else if(isToken(tokens[0],"snowMelt"))
+					{
+					if(tokens.size()==2)
+						{
+						double snowMelt=atof(tokens[1].c_str());
+						if(snowMeltSlider!=0)
+							{
+							/* Set the new value in the slider first to clamp it to the valid range: */
+							snowMeltSlider->setValue(snowMelt);
+							snowMelt=snowMeltSlider->getValue();
+							}
+						if(waterTable!=0)
+							waterTable->setSnowMelt(GLfloat(snowMelt));
+						}
+					else
+						std::cerr<<"Wrong number of arguments for waterSpeed control pipe command"<<std::endl;
+					}
+				else if(isToken(tokens[0],"waterSpeed"))
 					{
 					if(tokens.size()==2)
 						{
@@ -1414,13 +1488,19 @@ void Sandbox::frame(void)
 						{
 						if(isToken(tokens[1],"traditional"))
 							{
-							waterTable->setMode(WaterTable2::Traditional);
-							waterModeRadioBox->setSelectedToggle(0);
+							if(waterTable!=0)
+								{
+								waterTable->setMode(WaterTable2::Traditional);
+								waterModeRadioBox->setSelectedToggle(0);
+								}
 							}
 						else if(isToken(tokens[1],"engineering"))
 							{
-							waterTable->setMode(WaterTable2::Engineering);
-							waterModeRadioBox->setSelectedToggle(1);
+							if(waterTable!=0)
+								{
+								waterTable->setMode(WaterTable2::Engineering);
+								waterModeRadioBox->setSelectedToggle(1);
+								}
 							}
 						else
 							std::cerr<<"Unknown water mode "<<tokens[1]<<" in waterMode control pipe command"<<std::endl;
@@ -1706,6 +1786,13 @@ void Sandbox::display(GLContextData& contextData) const
 			{
 			/* Read back the current water level grid: */
 			waterTable->readQuantityTexture(contextData,textureTracker,GL_RED,request.waterLevelBuffer);
+			}
+		
+		/* Check if the grid request is active and wants snow height data: */
+		if(request.isActive()&&request.snowHeightBuffer!=0)
+			{
+			/* Read back the current snow height grid: */
+			waterTable->readSnowTexture(contextData,textureTracker,request.snowHeightBuffer);
 			}
 		
 		/* Finish an active grid request: */

@@ -2,7 +2,7 @@
 DEMTool - Tool class to load a digital elevation model into an augmented
 reality sandbox to colorize the sand surface based on distance to the
 DEM.
-Copyright (c) 2013-2022 Oliver Kreylos
+Copyright (c) 2013-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -78,7 +78,7 @@ class DEMTool:public DEM,public Vrui::Tool,public Vrui::Application::Tool<Sandbo
 	void alignDEM(float averageSandboxElevation); // Aligns the DEM with the sandbox
 	void loadDEMFile(const char* demFileName); // Loads a DEM from a file
 	void loadDEMFileCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData); // Called when the user selects a DEM file to load
-	static void bathymetryReadBackCallback(GLfloat* bathymetryBuffer,GLfloat* waterLevelBuffer,void* userData); // Callback when a bathymetry grid has been read back from the GPU
+	static void bathymetryReadBackCallback(GLfloat* bathymetryBuffer,GLfloat* waterLevelBuffer,GLfloat*,void* userData); // Callback when a bathymetry grid has been read back from the GPU
 	
 	/* Constructors and destructors: */
 	public:

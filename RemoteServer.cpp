@@ -1,7 +1,7 @@
 /***********************************************************************
 RemoteServer - Class to connect remote bathymetry and water level
 viewers to an Augmented Reality Sandbox.
-Copyright (c) 2019-2024 Oliver Kreylos
+Copyright (c) 2019-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -218,15 +218,16 @@ void* RemoteServer::communicationThreadMethod(void)
 				}
 		clientPositions.postNewValue();
 		
-		/* Check if there is a new grid pair: */
+		/* Check if there is a new grid triplet: */
 		if(grids.lockNewValue())
 			{
-			/* Quantize the bathymetry and water level grids: */
+			/* Quantize the property grids: */
 			int newGrid=1-currentGrid;
 			quantizeGrid(gridSize[0]-1,gridSize[1]-1,grids.getLockedValue().bathymetry,bathymetry[newGrid]);
 			quantizeGrid(gridSize[0],gridSize[1],grids.getLockedValue().waterLevel,waterLevel[newGrid]);
+			quantizeGrid(gridSize[0],gridSize[1],grids.getLockedValue().snowHeight,snowHeight[newGrid]);
 			
-			/* Send the quantized grid pair to all connected clients in streaming state: */
+			/* Send the quantized grid triplet to all connected clients in streaming state: */
 			std::vector<Client*> deadClients;
 			for(std::vector<Client*>::iterator cIt=clients.begin();cIt!=clients.end();++cIt)
 				{
@@ -234,10 +235,11 @@ void* RemoteServer::communicationThreadMethod(void)
 					{
 					if((*cIt)->state==Client::INTRA)
 						{
-						/* Send the new grid pair to the client using intra-frame compression: */
+						/* Send the new grid triplet to the client using intra-frame compression: */
 						IntraFrameCompressor compressor((*cIt)->clientPipe);
 						compressor.compressFrame(gridSize[0]-1,gridSize[1]-1,bathymetry[newGrid]);
 						compressor.compressFrame(gridSize[0],gridSize[1],waterLevel[newGrid]);
+						compressor.compressFrame(gridSize[0],gridSize[1],snowHeight[newGrid]);
 						
 						/* Finish the message: */
 						(*cIt)->clientPipe.flush();
@@ -251,6 +253,7 @@ void* RemoteServer::communicationThreadMethod(void)
 						InterFrameCompressor compressor((*cIt)->clientPipe);
 						compressor.compressFrame(gridSize[0]-1,gridSize[1]-1,bathymetry[currentGrid],bathymetry[newGrid]);
 						compressor.compressFrame(gridSize[0],gridSize[1],waterLevel[currentGrid],waterLevel[newGrid]);
+						compressor.compressFrame(gridSize[0],gridSize[1],snowHeight[currentGrid],snowHeight[newGrid]);
 						
 						/* Finish the message: */
 						(*cIt)->clientPipe.flush();
@@ -275,7 +278,7 @@ void* RemoteServer::communicationThreadMethod(void)
 	return 0;
 	}
 
-void RemoteServer::readBackCallback(GLfloat*,GLfloat*,void* userData)
+void RemoteServer::readBackCallback(GLfloat*,GLfloat*,GLfloat*,void* userData)
 	{
 	RemoteServer* thisPtr=static_cast<RemoteServer*>(userData);
 	
@@ -311,15 +314,17 @@ RemoteServer::RemoteServer(Sandbox* sSandbox,int listenPortId,double sRequestInt
 	eScale=65535.0f/(elevationRange[1]-elevationRange[0]);
 	eOffset=0.5f-elevationRange[0]*eScale;
 	
-	/* Allocate the bathymetry and water level grids: */
+	/* Allocate the property grids: */
 	for(int i=0;i<3;++i)
 		grids.getBuffer(i).init(gridSize);
 	
 	/* Create the grid quantization buffers: */
 	for(int i=0;i<2;++i)
+		{
 		bathymetry[i]=new Pixel[(gridSize[1]-1)*(gridSize[0]-1)];
-	for(int i=0;i<2;++i)
 		waterLevel[i]=new Pixel[gridSize[1]*gridSize[0]];
+		snowHeight[i]=new Pixel[gridSize[1]*gridSize[0]];
+		}
 	currentGrid=1;
 	
 	/* Start listening for incoming connections on the listening socket: */
@@ -339,9 +344,11 @@ RemoteServer::~RemoteServer(void)
 	
 	/* Release allocated resources: */
 	for(int i=0;i<2;++i)
+		{
 		delete[] bathymetry[i];
-	for(int i=0;i<2;++i)
 		delete[] waterLevel[i];
+		delete[] snowHeight[i];
+		}
 	}
 
 void RemoteServer::frame(double applicationTime)
@@ -354,7 +361,7 @@ void RemoteServer::frame(double applicationTime)
 		{
 		/* Request new grids: */
 		GridBuffers& gb=grids.startNewValue();
-		if(sandbox->gridRequest.requestGrids(gb.bathymetry,gb.waterLevel,&RemoteServer::readBackCallback,this))
+		if(sandbox->gridRequest.requestGrids(gb.bathymetry,gb.waterLevel,gb.snowHeight,&RemoteServer::readBackCallback,this))
 			{
 			/* Push the next request time forward: */
 			nextRequestTime=(Math::floor(applicationTime/requestInterval)+1.0)*requestInterval;

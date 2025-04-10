@@ -1,7 +1,7 @@
 /***********************************************************************
 RemoteServer - Class to connect remote bathymetry and water level
 viewers to an Augmented Reality Sandbox.
-Copyright (c) 2019-2024 Oliver Kreylos
+Copyright (c) 2019-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -46,22 +46,24 @@ class RemoteServer
 	{
 	/* Embedded classes: */
 	private:
-	struct GridBuffers // Structure representing a pair of grids
+	struct GridBuffers // Structure representing a triplet of grids
 		{
 		/* Elements: */
 		public:
 		GLfloat* bathymetry;
 		GLfloat* waterLevel;
+		GLfloat* snowHeight;
 		
 		/* Constructors and destructors: */
 		GridBuffers(void)
-			:bathymetry(0),waterLevel(0)
+			:bathymetry(0),waterLevel(0),snowHeight(0)
 			{
 			}
 		~GridBuffers(void)
 			{
 			delete[] bathymetry;
 			delete[] waterLevel;
+			delete[] snowHeight;
 			}
 		
 		/* Methods: */
@@ -69,6 +71,7 @@ class RemoteServer
 			{
 			bathymetry=new GLfloat[(gridSize[1]-1)*(gridSize[0]-1)];
 			waterLevel=new GLfloat[gridSize[1]*gridSize[0]];
+			snowHeight=new GLfloat[gridSize[1]*gridSize[0]];
 			}
 		};
 	
@@ -105,11 +108,12 @@ class RemoteServer
 	std::vector<Client*> clients; // List of currently connected clients
 	unsigned int numClients; // Number of connected clients in streaming state
 	Threads::TripleBuffer<std::vector<Vrui::ONTransform> > clientPositions; // Triple buffer of lists of positions/orientations of connected clients
-	double requestInterval; // Time interval between requests fro new bathymetry and water level grids
-	double nextRequestTime; // Application time at which to request the next bathymetry and water level grids
-	Threads::TripleBuffer<GridBuffers> grids; // Triple buffer of arrays to receive bathymetry and water level grids
+	double requestInterval; // Time interval between requests for new property grids
+	double nextRequestTime; // Application time at which to request the next property grids
+	Threads::TripleBuffer<GridBuffers> grids; // Triple buffer of arrays to receive property grids
 	Pixel* bathymetry[2]; // Pair of buffers for the current quantized bathymetry grid
 	Pixel* waterLevel[2]; // Pair of buffers for the current quantized water grid
+	Pixel* snowHeight[2]; // Pair of buffers for the current quantized snow grid
 	int currentGrid; // Index of the current buffer pair
 	
 	/* Private methods: */
@@ -118,7 +122,7 @@ class RemoteServer
 	static void newConnectionCallback(Threads::EventDispatcher::IOEvent& event); // Callback called when a connection attempt is made at the listening socket
 	static void clientMessageCallback(Threads::EventDispatcher::IOEvent& event); // Callback called when a message is received from a connected client
 	void* communicationThreadMethod(void); // Method handling communication with connected clients in the background
-	static void readBackCallback(GLfloat* bathymetryBuffer,GLfloat* waterLevelBuffer,void* userData); // Callback called when new property grids have been read back from the GPU
+	static void readBackCallback(GLfloat* bathymetryBuffer,GLfloat* waterLevelBuffer,GLfloat* snowHeightBuffer,void* userData); // Callback called when new property grids have been read back from the GPU
 	
 	/* Constructors and destructors: */
 	public:

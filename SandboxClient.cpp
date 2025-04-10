@@ -1,7 +1,7 @@
 /***********************************************************************
 SandboxClient - Vrui application connect to a remote AR Sandbox and
 render its bathymetry and water level.
-Copyright (c) 2019-2023 Oliver Kreylos
+Copyright (c) 2019-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -353,7 +353,7 @@ Methods of class SandboxClient::DataItem:
 ****************************************/
 
 SandboxClient::DataItem::DataItem(void)
-	:bathymetryTexture(0),waterTexture(0),textureVersion(0),
+	:bathymetryTexture(0),waterTexture(0),snowTexture(0),textureVersion(0),
 	 depthTexture(0),depthTextureSize(0,0),
 	 bathymetryVertexBuffer(0),bathymetryIndexBuffer(0),
 	 waterVertexBuffer(0),waterIndexBuffer(0),
@@ -374,11 +374,12 @@ SandboxClient::DataItem::DataItem(void)
 	TextureTracker::initExtensions();
 	
 	/* Create texture objects: */
-	GLuint textures[3];
-	glGenTextures(3,textures);
+	GLuint textures[4];
+	glGenTextures(4,textures);
 	bathymetryTexture=textures[0];
 	waterTexture=textures[1];
-	depthTexture=textures[2];
+	snowTexture=textures[2];
+	depthTexture=textures[3];
 	
 	/* Create buffer objects: */
 	GLuint buffers[4];
@@ -392,11 +393,12 @@ SandboxClient::DataItem::DataItem(void)
 SandboxClient::DataItem::~DataItem(void)
 	{
 	/* Destroy texture objects: */
-	GLuint textures[3];
+	GLuint textures[4];
 	textures[0]=bathymetryTexture;
 	textures[1]=waterTexture;
-	textures[2]=depthTexture;
-	glDeleteTextures(3,textures);
+	textures[2]=waterTexture;
+	textures[3]=depthTexture;
+	glDeleteTextures(4,textures);
 	
 	/* Destroy buffer objects: */
 	GLuint buffers[4];
@@ -432,6 +434,12 @@ void SandboxClient::unquantizeGrids(void)
 	for(GLfloat* wlPtr=gb.waterLevel;wlPtr!=wlEnd;++wlPtr,++qwlPtr)
 		*wlPtr=GLfloat(*qwlPtr)*eScale+eOffset;
 	
+	/* Un-quantize the snow height grid: */
+	GLfloat* shEnd=gb.snowHeight+(gridSize[1]*gridSize[0]);
+	Pixel* qshPtr=snowHeight[currentGrid];
+	for(GLfloat* shPtr=gb.snowHeight;shPtr!=shEnd;++shPtr,++qshPtr)
+		*shPtr=GLfloat(*qshPtr)*eScale+eOffset;
+	
 	/* Post the new set of grids: */
 	grids.postNewValue();
 	}
@@ -442,6 +450,7 @@ void SandboxClient::receiveGridsInter(void)
 	InterFrameDecompressor decompressor(*pipe);
 	decompressor.decompressFrame(bathymetrySize[0],bathymetrySize[1],bathymetry[currentGrid],bathymetry[newGrid]);
 	decompressor.decompressFrame(gridSize[0],gridSize[1],waterLevel[currentGrid],waterLevel[newGrid]);
+	decompressor.decompressFrame(gridSize[0],gridSize[1],snowHeight[currentGrid],snowHeight[newGrid]);
 	currentGrid=newGrid;
 	unquantizeGrids();
 	}
@@ -1038,9 +1047,11 @@ SandboxClient::SandboxClient(int& argc,char**& argv)
 		
 		/* Initialize the quantized grid buffers: */
 		for(int i=0;i<2;++i)
+			{
 			bathymetry[i]=new Pixel[bathymetrySize[1]*bathymetrySize[0]];
-		for(int i=0;i<2;++i)
 			waterLevel[i]=new Pixel[gridSize[1]*gridSize[0]];
+			snowHeight[i]=new Pixel[gridSize[1]*gridSize[0]];
+			}
 		currentGrid=0;
 		
 		/* Initialize the grid buffers: */
@@ -1051,6 +1062,7 @@ SandboxClient::SandboxClient(int& argc,char**& argv)
 		IntraFrameDecompressor decompressor(*pipe);
 		decompressor.decompressFrame(bathymetrySize[0],bathymetrySize[1],bathymetry[currentGrid]);
 		decompressor.decompressFrame(gridSize[0],gridSize[1],waterLevel[currentGrid]);
+		decompressor.decompressFrame(gridSize[0],gridSize[1],snowHeight[currentGrid]);
 		unquantizeGrids();
 		}
 	catch(const std::runtime_error& err)
@@ -1094,9 +1106,11 @@ SandboxClient::~SandboxClient(void)
 	/* Release allocated resources: */
 	delete elevationColorMap;
 	for(int i=0;i<2;++i)
+		{
 		delete[] bathymetry[i];
-	for(int i=0;i<2;++i)
 		delete[] waterLevel[i];
+		delete[] snowHeight[i];
+		}
 	}
 
 void SandboxClient::toolCreationCallback(Vrui::ToolManager::ToolCreationCallbackData* cbData)

@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 #include <Threads/Mutex.h>
 #include <Threads/TripleBuffer.h>
+#include <Math/Interval.h>
 #include <Geometry/Box.h>
 #include <Geometry/Rotation.h>
 #include <Geometry/OrthonormalTransformation.h>
@@ -101,7 +102,7 @@ class Sandbox:public Vrui::Application,public GLObject
 		{
 		/* Embedded classes: */
 		public:
-		typedef void (*CallbackFunction)(GLfloat*,GLfloat*,void*); // Type for callback functions
+		typedef void (*CallbackFunction)(GLfloat*,GLfloat*,GLfloat*,void*); // Type for callback functions
 		
 		struct Request // Structure holding a request's parameters
 			{
@@ -109,12 +110,14 @@ class Sandbox:public Vrui::Application,public GLObject
 			public:
 			GLfloat* bathymetryBuffer; // Pointer to a buffer to hold the requested bathymetry grid if requested
 			GLfloat* waterLevelBuffer; // Pointer to a buffer to hold the requested water level grid if requested
+			GLfloat* snowHeightBuffer; // Pointer to a buffer to hold the requested snow height grid if requested
 			CallbackFunction callback; // Function to call when the grid(s) has/have been read back
 			void* callbackData; // Additional data element to pass to callback function
 			
 			/* Constructors and destructors: */
 			Request(void) // Creates an inactive request
-				:bathymetryBuffer(0),waterLevelBuffer(0),callback(0),callbackData(0)
+				:bathymetryBuffer(0),waterLevelBuffer(0),snowHeightBuffer(0),
+				 callback(0),callbackData(0)
 				{
 				}
 			
@@ -125,7 +128,7 @@ class Sandbox:public Vrui::Application,public GLObject
 				}
 			void complete(void) // Calls the read-back callback
 				{
-				(*callback)(bathymetryBuffer,waterLevelBuffer,callbackData);
+				(*callback)(bathymetryBuffer,waterLevelBuffer,snowHeightBuffer,callbackData);
 				}
 			};
 		
@@ -139,13 +142,14 @@ class Sandbox:public Vrui::Application,public GLObject
 			}
 		
 		/* Methods: */
-		bool requestGrids(GLfloat* newBathymetryBuffer,GLfloat* newWaterLevelBuffer,CallbackFunction newCallback,void* newCallbackData) // Requests a grid read-back; returns true if request has been granted
+		bool requestGrids(GLfloat* newBathymetryBuffer,GLfloat* newWaterLevelBuffer,GLfloat* newSnowHeightBuffer,CallbackFunction newCallback,void* newCallbackData) // Requests a grid read-back; returns true if request has been granted
 			{
 			Threads::Mutex::Lock lock(mutex);
 			if(currentRequest.callback==0)
 				{
 				currentRequest.bathymetryBuffer=newBathymetryBuffer;
 				currentRequest.waterLevelBuffer=newWaterLevelBuffer;
+				currentRequest.snowHeightBuffer=newSnowHeightBuffer;
 				currentRequest.callback=newCallback;
 				currentRequest.callbackData=newCallbackData;
 				return true;
@@ -203,6 +207,7 @@ class Sandbox:public Vrui::Application,public GLObject
 	Size frameSize; // Width and height of the camera's depth frames
 	PixelDepthCorrection* pixelDepthCorrection; // Buffer of per-pixel depth correction coefficients
 	Kinect::FrameSource::IntrinsicParameters cameraIps; // Intrinsic parameters of the Kinect camera
+	Math::Interval<double> elevationRange; // Range of valid elevations for topography relative to base plane
 	FrameFilter* frameFilter; // Processing object to filter raw depth frames from the Kinect camera
 	bool pauseUpdates; // Pauses updates of the topography
 	Threads::TripleBuffer<Kinect::FrameBuffer> filteredFrames; // Triple buffer for incoming filtered depth frames
@@ -226,6 +231,8 @@ class Sandbox:public Vrui::Application,public GLObject
 	GLMotif::ToggleButton* pauseUpdatesToggle;
 	GLMotif::FileSelectionHelper gridPropertyFileHelper; // Helper object to load/save grid property from/to files
 	GLMotif::PopupWindow* waterControlDialog;
+	GLMotif::TextFieldSlider* snowLineSlider;
+	GLMotif::TextFieldSlider* snowMeltSlider;
 	GLMotif::TextFieldSlider* waterSpeedSlider;
 	GLMotif::TextFieldSlider* waterMaxStepsSlider;
 	GLMotif::TextField* frameRateTextField;
@@ -245,6 +252,8 @@ class Sandbox:public Vrui::Application,public GLObject
 	void loadGridPropertyFileCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
 	void saveGridPropertyFileCallback(GLMotif::FileSelectionDialog::OKCallbackData* cbData);
 	void showWaterControlDialogCallback(Misc::CallbackData* cbData);
+	void snowLineSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
+	void snowMeltSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
 	void waterSpeedSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
 	void waterMaxStepsSliderCallback(GLMotif::TextFieldSlider::ValueChangedCallbackData* cbData);
 	void waterModeRadioBoxCallback(GLMotif::RadioBox::ValueChangedCallbackData* cbData);

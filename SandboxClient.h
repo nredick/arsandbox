@@ -1,7 +1,7 @@
 /***********************************************************************
 SandboxClient - Vrui application connect to a remote AR Sandbox and
 render its bathymetry and water level.
-Copyright (c) 2019-2023 Oliver Kreylos
+Copyright (c) 2019-2025 Oliver Kreylos
 
 This file is part of the Augmented Reality Sandbox (SARndbox).
 
@@ -62,22 +62,24 @@ class SandboxClient:public Vrui::Application,public GLObject,public Vrui::Transp
 	typedef Vrui::Point Point;
 	typedef Vrui::Vector Vector;
 	
-	struct GridBuffers // Structure representing a pair of grids
+	struct GridBuffers // Structure representing a triplet of grids
 		{
 		/* Elements: */
 		public:
 		GLfloat* bathymetry;
 		GLfloat* waterLevel;
+		GLfloat* snowHeight;
 		
 		/* Constructors and destructors: */
 		GridBuffers(void)
-			:bathymetry(0),waterLevel(0)
+			:bathymetry(0),waterLevel(0),snowHeight(0)
 			{
 			}
 		~GridBuffers(void)
 			{
 			delete[] bathymetry;
 			delete[] waterLevel;
+			delete[] snowHeight;
 			}
 		
 		/* Methods: */
@@ -85,6 +87,7 @@ class SandboxClient:public Vrui::Application,public GLObject,public Vrui::Transp
 			{
 			bathymetry=new GLfloat[(gridSize[1]-1)*(gridSize[0]-1)];
 			waterLevel=new GLfloat[gridSize[1]*gridSize[0]];
+			snowHeight=new GLfloat[gridSize[1]*gridSize[0]];
 			}
 		};
 	
@@ -135,6 +138,7 @@ class SandboxClient:public Vrui::Application,public GLObject,public Vrui::Transp
 		public:
 		GLuint bathymetryTexture; // ID of texture object holding bathymetry vertex elevations
 		GLuint waterTexture; // ID of texture object holding water surface vertex elevations
+		GLuint snowTexture; // ID of texture object holding snow heights
 		unsigned int textureVersion; // Version number of bathymetry and water grids stored in textures
 		GLuint depthTexture; // ID of the depth texture used for water opacity calculation
 		Size depthTextureSize; // Current size of the depth texture image
@@ -163,6 +167,7 @@ class SandboxClient:public Vrui::Application,public GLObject,public Vrui::Transp
 	Threads::Thread communicationThread; // Thread to handle communication with the remote AR Sandbox in the background
 	Pixel* bathymetry[2]; // Pair of buffers holding quantized bathymetry grids received from the server
 	Pixel* waterLevel[2]; // Pair of buffers holding quantized water level grids received from the server
+	Pixel* snowHeight[2]; // Pair of buffers holding quantized snow height grids received from the server
 	int currentGrid; // Index of the current grid pair
 	Threads::TripleBuffer<GridBuffers> grids; // Triple buffer of bathymetry and water level grids
 	unsigned int gridVersion; // Version number of currently locked grids
