@@ -1,4 +1,4 @@
-/***********************************************************************
+t/***********************************************************************
 SandboxClient - Vrui application connect to a remote AR Sandbox and
 render its bathymetry and water level.
 Copyright (c) 2019-2025 Oliver Kreylos
@@ -1078,7 +1078,7 @@ SandboxClient::SandboxClient(int& argc,char**& argv)
 	dispatcher.addIOEventListener(pipe->getFd(),Threads::EventDispatcher::Read,serverMessageCallback,this);
 	communicationThread.start(this,&SandboxClient::communicationThreadMethod);
 	
-	/* Set the linear unit to scale the AR Sandbox 1:100: */
+	/* Set the linear unit to scale the AR Sandbox correctly: */
 	Vrui::getCoordinateManager()->setUnit(Geometry::LinearUnit(Geometry::LinearUnit::METER,1.0));
 	
 	/* Create a light source and disable all viewers' headlights: */
