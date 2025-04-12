@@ -149,6 +149,7 @@ class SandboxClient:public Vrui::Application,public GLObject,public Vrui::Transp
 		Shader bathymetryShader; // Shader to render the bathymetry
 		Shader opaqueWaterShader; // Shader to render the water surface's back side during the opaque rendering pass
 		Shader transparentWaterShader; // Shader to render the water surface's front side during the transparent rendering pass
+		Shader snowShader; // Shader to render the snow surface
 		unsigned int lightStateVersion; // Version number for current lighting state reflected in the bathymetry and water surface shader programs
 		
 		/* Constructors and destructors: */
@@ -173,6 +174,7 @@ class SandboxClient:public Vrui::Application,public GLObject,public Vrui::Transp
 	unsigned int gridVersion; // Version number of currently locked grids
 	Vrui::Lightsource* sun; // Light source representing the sun
 	bool underwater; // Flag if the main viewer's head is currently under water
+	bool undersnow; // Flag if the main viewer's head is currently under snow
 	
 	/* Private methods: */
 	void unquantizeGrids(void); // Un-quantizes the current bathymetry and water level grids received from the remote AR Sandbox

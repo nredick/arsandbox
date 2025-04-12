@@ -1444,7 +1444,7 @@ void Sandbox::frame(void)
 							waterTable->setSnowLine(GLfloat(snowLine));
 						}
 					else
-						std::cerr<<"Wrong number of arguments for waterSpeed control pipe command"<<std::endl;
+						std::cerr<<"Wrong number of arguments for snowLine control pipe command"<<std::endl;
 					}
 				else if(isToken(tokens[0],"snowMelt"))
 					{
@@ -1461,7 +1461,7 @@ void Sandbox::frame(void)
 							waterTable->setSnowMelt(GLfloat(snowMelt));
 						}
 					else
-						std::cerr<<"Wrong number of arguments for waterSpeed control pipe command"<<std::endl;
+						std::cerr<<"Wrong number of arguments for snowMelt control pipe command"<<std::endl;
 					}
 				else if(isToken(tokens[0],"waterSpeed"))
 					{
@@ -1536,6 +1536,15 @@ void Sandbox::frame(void)
 						}
 					else
 						std::cerr<<"Wrong number of arguments for waterRoughness control pipe command"<<std::endl;
+					}
+				else if(isToken(tokens[0],"rainStrength"))
+					{
+					if(tokens.size()==2)
+						{
+						rainStrength=GLfloat(atof(tokens[1].c_str()));
+						}
+					else
+						std::cerr<<"Wrong number of arguments for rainStrength control pipe command"<<std::endl;
 					}
 				else if(isToken(tokens[0],"waterAbsorption"))
 					{

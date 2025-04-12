@@ -1,4 +1,4 @@
-t/***********************************************************************
+/***********************************************************************
 SandboxClient - Vrui application connect to a remote AR Sandbox and
 render its bathymetry and water level.
 Copyright (c) 2019-2025 Oliver Kreylos
@@ -47,6 +47,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <GL/Extensions/GLARBVertexShader.h>
 #include <GL/GLModels.h>
 #include <GL/GLGeometryWrappers.h>
+#include <GL/GLTransformationWrappers.h>
 #include <Vrui/Viewer.h>
 #include <Vrui/CoordinateManager.h>
 #include <Vrui/Lightsource.h>
@@ -847,6 +848,7 @@ void SandboxClient::compileShaders(SandboxClient::DataItem* dataItem,const GLLig
 	std::string fragmentShaderMain="\
 	void main()\n\
 		{\n\
+		/* Discard the fragment if the ground underneath is actually dry: */\n\
 		if(vertexWaterDepth<waterDepthThreshold)\n\
 			discard;\n\
 		gl_FragColor=gl_Color;\n\
@@ -876,8 +878,11 @@ void SandboxClient::compileShaders(SandboxClient::DataItem* dataItem,const GLLig
 	std::string vertexShaderDefines="\
 	#extension GL_ARB_texture_rectangle : enable\n";
 	std::string vertexShaderFunctions;
+	std::string vertexShaderVaryings="\
+	varying float vertexWaterDepth; // Water depth at a surface's vertex\n";
 	std::string vertexShaderUniforms="\
 	uniform sampler2DRect waterSampler; // Sampler for the water surface texture\n\
+	uniform sampler2DRect bathymetrySampler; // Sampler for the bathymetry texture\n\
 	uniform vec2 waterCellSize; // Cell size of the water surface grid\n";
 	std::string vertexShaderMain="\
 	void main()\n\
@@ -890,6 +895,142 @@ void SandboxClient::compileShaders(SandboxClient::DataItem* dataItem,const GLLig
 		vec3 normalGc;\n\
 		normalGc.x=(texture2DRect(waterSampler,vec2(vertexGc.x-1.0,vertexGc.y)).r-texture2DRect(waterSampler,vec2(vertexGc.x+1.0,vertexGc.y)).r)*waterCellSize.y;\n\
 		normalGc.y=(texture2DRect(waterSampler,vec2(vertexGc.x,vertexGc.y-1.0)).r-texture2DRect(waterSampler,vec2(vertexGc.x,vertexGc.y+1.0)).r)*waterCellSize.x;\n\
+		normalGc.z=1.0*waterCellSize.x*waterCellSize.y;\n\
+		\n\
+		/* Get the bathymetry elevation at the same location and calculate the vertex's water depth: */\n\
+		float bathy=(texture2DRect(bathymetrySampler,vertexGc.xy-vec2(1.0,1.0)).r\n\
+		            +texture2DRect(bathymetrySampler,vertexGc.xy-vec2(1.0,0.0)).r\n\
+		            +texture2DRect(bathymetrySampler,vertexGc.xy-vec2(0.0,1.0)).r\n\
+		            +texture2DRect(bathymetrySampler,vertexGc.xy-vec2(0.0,0.0)).r)*0.25;\n\
+		vertexWaterDepth=vertexGc.z-bathy;\n\
+		\n\
+		/* Transform the vertex and its normal vector from grid space to eye space for illumination: */\n\
+		vertexGc.x=(vertexGc.x-0.5)*waterCellSize.x;\n\
+		vertexGc.y=(vertexGc.y-0.5)*waterCellSize.y;\n\
+		vec4 vertexEc=gl_ModelViewMatrix*vertexGc;\n\
+		vec3 normalEc=normalize(gl_NormalMatrix*normalGc);\n\
+		\n\
+		/* Initialize the vertex color accumulators: */\n\
+		vec4 ambDiff=gl_LightModel.ambient*gl_FrontMaterial.ambient;\n\
+		vec4 spec=vec4(0.0,0.0,0.0,0.0);\n\
+		\n\
+		/* Accumulate all enabled light sources: */\n";
+	
+	/* Create light application functions for all enabled light sources: */
+	for(int lightIndex=0;lightIndex<lightTracker.getMaxNumLights();++lightIndex)
+		if(lightTracker.getLightState(lightIndex).isEnabled())
+			{
+			/* Create the light accumulation function: */
+			vertexShaderFunctions+=lightTracker.createAccumulateLightFunction(lightIndex);
+			
+			/* Call the light application function from the bathymetry vertex shader's main function: */
+			vertexShaderMain+="\
+			accumulateLight";
+			char liBuffer[12];
+			vertexShaderMain.append(Misc::print(lightIndex,liBuffer+11));
+			vertexShaderMain+="(vertexEc,normalEc,gl_FrontMaterial.ambient,gl_FrontMaterial.diffuse,gl_FrontMaterial.specular,gl_FrontMaterial.shininess,ambDiff,spec);\n";
+			}
+	
+	/* Finalize the vertex shader's main function: */
+	vertexShaderMain+="\
+		gl_FrontColor=vec4(ambDiff.xyz+spec.xyz,1.0);\n\
+		gl_BackColor=gl_FrontColor;\n\
+		gl_Position=gl_ModelViewProjectionMatrix*vertexGc;\n\
+		}\n";
+	
+	/* Compile the vertex shader: */
+	shader.addShader(glCompileVertexShaderFromStrings(5,vertexShaderDefines.c_str(),vertexShaderFunctions.c_str(),vertexShaderVaryings.c_str(),vertexShaderUniforms.c_str(),vertexShaderMain.c_str()));
+	
+	std::string fragmentShaderDefines="\
+	#extension GL_ARB_texture_rectangle : enable\n";
+	std::string fragmentShaderVaryings="\
+	varying float vertexWaterDepth; // Water depth at a surface's vertex\n";
+	std::string fragmentShaderUniforms="\
+	uniform sampler2DRect depthSampler; // Sampler for the depth buffer texture\n\
+	uniform mat4 depthMatrix; // Matrix to transform fragment coordinates to model space\n\
+	uniform float waterOpacity; // Scale factor for fogging\n\
+	uniform float waterDepthThreshold; // Depth threshold under which a vertex is considered dry\n";
+	
+	/* Create the fragment shader source code: */
+	std::string fragmentShaderMain="\
+	void main()\n\
+		{\n\
+		/* Discard the fragment if the ground underneath is actually dry: */\n\
+		if(vertexWaterDepth<waterDepthThreshold)\n\
+			discard;\n\
+		\n\
+		/* Transform the fragment currently in the pixel back to model space: */\n\
+		vec4 oldFrag=depthMatrix*vec4(gl_FragCoord.xy,texture2DRect(depthSampler,gl_FragCoord.xy).x,1.0);\n\
+		vec4 newFrag=depthMatrix*vec4(gl_FragCoord.xyz,1.0);\n\
+		float modelDist=length(newFrag.xyz/newFrag.w-oldFrag.xyz/oldFrag.w);\n\
+		// gl_FragColor=vec4(gl_Color.xyz,1.0-exp(-modelDist*waterOpacity));\n\
+		gl_FragColor=vec4(vec3(0.2,0.5,0.8),1.0-exp(-modelDist*waterOpacity));\n\
+		}\n";
+	
+	/* Compile the fragment shader: */
+	shader.addShader(glCompileFragmentShaderFromStrings(4,fragmentShaderDefines.c_str(),fragmentShaderVaryings.c_str(),fragmentShaderUniforms.c_str(),fragmentShaderMain.c_str()));
+	
+	/* Link the shader program: */
+	shader.link();
+	
+	/* Retrieve the shader program's uniform variable locations: */
+	shader.setUniformLocation("waterSampler");
+	shader.setUniformLocation("bathymetrySampler");
+	shader.setUniformLocation("waterCellSize");
+	shader.setUniformLocation("depthSampler");
+	shader.setUniformLocation("depthMatrix");
+	shader.setUniformLocation("waterOpacity");
+	shader.setUniformLocation("waterDepthThreshold");
+	}
+	
+	/*********************************************************************
+	Compile and link the snow shader:
+	*********************************************************************/
+	
+	{
+	Shader& shader=dataItem->snowShader;
+	
+	/* Create the vertex shader source code: */
+	std::string vertexShaderDefines="\
+	#extension GL_ARB_texture_rectangle : enable\n";
+	std::string vertexShaderFunctions;
+	std::string vertexShaderVaryings="\
+	varying float vertexSnowHeight; // Snow height at a surface's vertex\n";
+	std::string vertexShaderUniforms="\
+	uniform sampler2DRect snowSampler; // Sampler for the snow height texture\n\
+	uniform sampler2DRect bathymetrySampler; // Sampler for the bathymetry texture\n\
+	uniform vec2 waterCellSize; // Cell size of the water surface grid\n";
+	std::string vertexShaderMain="\
+	void main()\n\
+		{\n\
+		/* Get the vertex's snow height from the snow height texture: */\n\
+		vertexSnowHeight=texture2DRect(snowSampler,gl_Vertex.xy).r;\n\
+		\n\
+		/* Get the bathymetry elevation at the same location and calculate the vertex's grid-space z coordinate: */\n\
+		float b0=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(1.0,1.0)).r;\n\
+		float b1=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(1.0,0.0)).r;\n\
+		float b2=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(0.0,1.0)).r;\n\
+		float b3=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(0.0,0.0)).r;\n\
+		float bathy=(b0+b1+b2+b3)*0.25;\n\
+		vec4 vertexGc=gl_Vertex;\n\
+		vertexGc.z=vertexSnowHeight+bathy;\n\
+		\n\
+		/* Calculate the vertex's grid-space normal vector: */\n\
+		float b4=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(1.0,2.0)).r;\n\
+		float b5=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(0.0,2.0)).r;\n\
+		float b6=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(2.0,1.0)).r;\n\
+		float b7=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(-1.0,1.0)).r;\n\
+		float b8=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(2.0,0.0)).r;\n\
+		float b9=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(-1.0,0.0)).r;\n\
+		float b10=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(1.0,-1.0)).r;\n\
+		float b11=texture2DRect(bathymetrySampler,gl_Vertex.xy-vec2(0.0,-1.0)).r;\n\
+		vec3 normalGc;\n\
+		float zxm=texture2DRect(snowSampler,vec2(vertexGc.x-1.0,vertexGc.y)).r+(b6+b0+b8+b2)*0.25;\n\
+		float zxp=texture2DRect(snowSampler,vec2(vertexGc.x+1.0,vertexGc.y)).r+(b1+b7+b3+b9)*0.25;\n\
+		normalGc.x=(zxm-zxp)*waterCellSize.y;\n\
+		float zym=texture2DRect(snowSampler,vec2(vertexGc.x,vertexGc.y-1.0)).r+(b4+b5+b0+b1)*0.25;\n\
+		float zyp=texture2DRect(snowSampler,vec2(vertexGc.x,vertexGc.y+1.0)).r+(b2+b3+b10+b11)*0.25;\n\
+		normalGc.y=(zym-zyp)*waterCellSize.x;\n\
 		normalGc.z=1.0*waterCellSize.x*waterCellSize.y;\n\
 		\n\
 		/* Transform the vertex and its normal vector from grid space to eye space for illumination: */\n\
@@ -927,39 +1068,33 @@ void SandboxClient::compileShaders(SandboxClient::DataItem* dataItem,const GLLig
 		}\n";
 	
 	/* Compile the vertex shader: */
-	shader.addShader(glCompileVertexShaderFromStrings(4,vertexShaderDefines.c_str(),vertexShaderFunctions.c_str(),vertexShaderUniforms.c_str(),vertexShaderMain.c_str()));
-	
-	std::string fragmentShaderDefines="\
-	#extension GL_ARB_texture_rectangle : enable\n";
-	std::string fragmentShaderUniforms="\
-	uniform sampler2DRect depthSampler; // Sampler for the depth buffer texture\n\
-	uniform mat4 depthMatrix; // Matrix to transform fragment coordinates to model space\n\
-	uniform float waterOpacity; // Scale factor for fogging\n";
+	shader.addShader(glCompileVertexShaderFromStrings(5,vertexShaderDefines.c_str(),vertexShaderFunctions.c_str(),vertexShaderVaryings.c_str(),vertexShaderUniforms.c_str(),vertexShaderMain.c_str()));
 	
 	/* Create the fragment shader source code: */
+	std::string fragmentShaderVaryings="\
+	varying float vertexSnowHeight; // Snow height at a surface's vertex\n";
+	std::string fragmentShaderUniforms="\
+	uniform float snowHeightThreshold; // Height threshold under which a vertex is considered uncovered\n";
 	std::string fragmentShaderMain="\
 	void main()\n\
 		{\n\
-		/* Transform the fragment currently in the pixel back to model space: */\n\
-		vec4 oldFrag=depthMatrix*vec4(gl_FragCoord.xy,texture2DRect(depthSampler,gl_FragCoord.xy).x,1.0);\n\
-		vec4 newFrag=depthMatrix*vec4(gl_FragCoord.xyz,1.0);\n\
-		float modelDist=length(newFrag.xyz/newFrag.w-oldFrag.xyz/oldFrag.w);\n\
-		// gl_FragColor=vec4(gl_Color.xyz,1.0-exp(-modelDist*waterOpacity));\n\
-		gl_FragColor=vec4(vec3(0.2,0.5,0.8),1.0-exp(-modelDist*waterOpacity));\n\
+		/* Discard the fragment if the ground underneath is actually uncovered: */\n\
+		if(vertexSnowHeight<snowHeightThreshold)\n\
+			discard;\n\
+		gl_FragColor=gl_Color;\n\
 		}\n";
 	
 	/* Compile the fragment shader: */
-	shader.addShader(glCompileFragmentShaderFromStrings(3,fragmentShaderDefines.c_str(),fragmentShaderUniforms.c_str(),fragmentShaderMain.c_str()));
+	shader.addShader(glCompileFragmentShaderFromStrings(3,fragmentShaderVaryings.c_str(),fragmentShaderUniforms.c_str(),fragmentShaderMain.c_str()));
 	
 	/* Link the shader program: */
 	shader.link();
 	
 	/* Retrieve the shader program's uniform variable locations: */
-	shader.setUniformLocation("waterSampler");
+	shader.setUniformLocation("snowSampler");
+	shader.setUniformLocation("bathymetrySampler");
 	shader.setUniformLocation("waterCellSize");
-	shader.setUniformLocation("depthSampler");
-	shader.setUniformLocation("depthMatrix");
-	shader.setUniformLocation("waterOpacity");
+	shader.setUniformLocation("snowHeightThreshold");
 	}
 	
 	/* Mark the shaders as up-to-date: */
@@ -971,7 +1106,7 @@ SandboxClient::SandboxClient(int& argc,char**& argv)
 	 pipe(0),
 	 elevationColorMap(0),
 	 gridVersion(0),
-	 sun(0),underwater(false)
+	 sun(0),underwater(false),undersnow(false)
 	{
 	/* Parse the command line: */
 	const char* serverName=0;
@@ -1133,26 +1268,54 @@ void SandboxClient::frame(void)
 	if(grids.lockNewValue())
 		++gridVersion;
 	
-	/* Calculate the position of the main viewer's head in grid space: */
+	/* Calculate the position of the main viewer's head in cell-centered grid space: */
 	Point head=Vrui::getHeadPosition();
-	GLfloat* waterLevel=grids.getLockedValue().waterLevel;
-	Scalar dx=head[0]/Scalar(cellSize[0]);
+	Scalar dx=head[0]/Scalar(cellSize[0])-Scalar(0.5);
 	int gx(Math::floor(dx));
 	dx-=gx;
-	Scalar dy=head[1]/Scalar(cellSize[1]);
+	Scalar dy=head[1]/Scalar(cellSize[1])-Scalar(0.5);
 	int gy(Math::floor(dy));
 	dy-=gy;
-	if(gx>=0&&gx<int(bathymetrySize[0])&&gy>=0&&gy<int(bathymetrySize[1]))
+	
+	/* Check if the head is underwater: */
+	underwater=false;
+	if(gx>=0&&gx<int(gridSize[0]-1)&&gy>=0&&gy<int(gridSize[1]-1))
 		{
-		GLfloat* cell=waterLevel+(gy*gridSize[0]+gx);
-		Scalar b0=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
+		GLfloat* cell=grids.getLockedValue().waterLevel+(gy*gridSize[0]+gx);
+		Scalar w0=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
 		cell+=gridSize[0];
-		Scalar b1=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
-		Scalar water=b0*(Scalar(1)-dy)+b1*dy;
+		Scalar w1=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
+		Scalar water=w0*(Scalar(1)-dy)+w1*dy;
 		underwater=head[2]<=water;
 		}
-	else
-		underwater=false;
+	
+	/* Check if the head is under snow: */
+	undersnow=false;
+	if(gx>=0&&gx<int(gridSize[0]-1)&&gy>=0&&gy<int(gridSize[1]-1))
+		{
+		GLfloat* cell=grids.getLockedValue().snowHeight+(gy*gridSize[0]+gx);
+		Scalar s0=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
+		cell+=gridSize[0];
+		Scalar s1=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
+		Scalar snow=s0*(Scalar(1)-dy)+s1*dy;
+		
+		/* Sample the bathymetry at the main viewer's head position: */
+		dx=head[0]/Scalar(cellSize[0])-Scalar(1);
+		int gx(Math::floor(dx));
+		dx-=gx;
+		dy=head[1]/Scalar(cellSize[1])-Scalar(1);
+		int gy(Math::floor(dy));
+		dy-=gy;
+		if(gx>=0&&gx<int(bathymetrySize[0]-1)&&gy>=0&&gy<int(bathymetrySize[1]-1))
+			{
+			GLfloat* cell=grids.getLockedValue().bathymetry+(gy*bathymetrySize[0]+gx);
+			Scalar b0=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
+			cell+=bathymetrySize[0];
+			Scalar b1=cell[0]*(Scalar(1)-dx)+cell[1]*dx;
+			Scalar bathy=b0*(Scalar(1)-dy)+b1*dy;
+			undersnow=head[2]<=bathy+snow;
+			}
+		}
 	
 	/* Send the current head position to the remote AR Sandbox: */
 	Geometry::Point<Misc::Float32,3> fhead(head);
@@ -1167,6 +1330,27 @@ void SandboxClient::display(GLContextData& contextData) const
 	{
 	/* Retrieve the context data item: */
 	DataItem* dataItem=contextData.retrieveDataItem<DataItem>(this);
+	
+	if(undersnow)
+		{
+		/* Draw a white ping pong ball around the current eye position: */
+		glPushAttrib(GL_ENABLE_BIT);
+		glDisable(GL_LIGHTING);
+		
+		glPushMatrix();
+		const Vrui::DisplayState& ds=Vrui::getDisplayState(contextData);
+		glLoadMatrix(ds.modelviewPhysical);
+		glTranslate(ds.eyePosition-Vrui::Point::origin);
+		glColor3f(1.0f,1.0f,1.0f);
+		glFrontFace(GL_CW);
+		glDrawCube(12.0*Vrui::getInchFactor());
+		glFrontFace(GL_CCW);
+		
+		glPopMatrix();
+		glPopAttrib();
+		
+		return;
+		}
 	
 	/* Set up OpenGL state: */
 	glPushAttrib(GL_ENABLE_BIT);
@@ -1234,7 +1418,6 @@ void SandboxClient::display(GLContextData& contextData) const
 	glMaterialShininess(GLMaterialEnums::FRONT,64.0f);
 	dataItem->opaqueWaterShader.use();
 	textureTracker.reset();
-	dataItem->opaqueWaterShader.uploadUniform(0);
 	
 	/* Render the locked water surface grid: */
 	dataItem->opaqueWaterShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->waterTexture));
@@ -1243,6 +1426,7 @@ void SandboxClient::display(GLContextData& contextData) const
 		/* Upload the new water surface grid: */
 		glTexSubImage2D(GL_TEXTURE_RECTANGLE_ARB,0,gridSize,GL_RED,GL_FLOAT,grids.getLockedValue().waterLevel);
 		}
+	dataItem->opaqueWaterShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetryTexture));
 	
 	dataItem->opaqueWaterShader.uploadUniform(cellSize[0],cellSize[1]);
 	dataItem->opaqueWaterShader.uploadUniform((elevationRange[1]-elevationRange[0])/65535.0f);
@@ -1262,6 +1446,39 @@ void SandboxClient::display(GLContextData& contextData) const
 	GLVertexArrayParts::disable(Vertex::getPartsMask());
 	}
 	glCullFace(GL_BACK);
+	
+	/* Activate the snow surface shader: */
+	glMaterialAmbientAndDiffuse(GLMaterialEnums::FRONT,GLColor<GLfloat,4>(1.0f,1.0f,1.0f));
+	glMaterialSpecular(GLMaterialEnums::FRONT,GLColor<GLfloat,4>(1.0f,1.0f,1.0f));
+	glMaterialShininess(GLMaterialEnums::FRONT,24.0f);
+	dataItem->snowShader.use();
+	textureTracker.reset();
+	
+	/* Render the locked snow height grid: */
+	dataItem->snowShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->snowTexture));
+	if(dataItem->textureVersion!=gridVersion)
+		{
+		/* Upload the new snow height grid: */
+		glTexSubImage2D(GL_TEXTURE_RECTANGLE_ARB,0,gridSize,GL_RED,GL_FLOAT,grids.getLockedValue().snowHeight);
+		}
+	dataItem->snowShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetryTexture));
+	
+	dataItem->snowShader.uploadUniform(cellSize[0],cellSize[1]);
+	dataItem->snowShader.uploadUniform((elevationRange[1]-elevationRange[0])/65535.0f);
+	
+	/* Bind the vertex and index buffers: */
+	glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->waterVertexBuffer);
+	glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB,dataItem->waterIndexBuffer);
+	
+	/* Draw the snow surface: */
+	{
+	GLVertexArrayParts::enable(Vertex::getPartsMask());
+	glVertexPointer(static_cast<const Vertex*>(0));
+	GLuint* indexPtr=0;
+	for(unsigned int y=1;y<gridSize[1];++y,indexPtr+=gridSize[0]*2)
+		glDrawElements(GL_QUAD_STRIP,gridSize[0]*2,GL_UNSIGNED_INT,indexPtr);
+	GLVertexArrayParts::disable(Vertex::getPartsMask());
+	}
 	
 	/* Protect the buffers and textures and deactivate the shaders: */
 	glBindBufferARB(GL_ARRAY_BUFFER_ARB,0);
@@ -1328,6 +1545,15 @@ void SandboxClient::initContext(GLContextData& contextData) const
 	
 	/* Create the water surface elevation texture: */
 	glBindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->waterTexture);
+	glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_WRAP_S,GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_WRAP_T,GL_CLAMP);
+	glTexImage2D(GL_TEXTURE_RECTANGLE_ARB,0,GL_R32F,gridSize,0,GL_RED,GL_FLOAT,0);
+	glBindTexture(GL_TEXTURE_RECTANGLE_ARB,0);
+	
+	/* Create the snow height texture: */
+	glBindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->snowTexture);
 	glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_RECTANGLE_ARB,GL_TEXTURE_WRAP_S,GL_CLAMP);
@@ -1431,6 +1657,7 @@ void SandboxClient::glRenderActionTransparent(GLContextData& contextData) const
 	
 	/* Render the locked bathymetry and water surface grids: */
 	dataItem->transparentWaterShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->waterTexture));
+	dataItem->transparentWaterShader.uploadUniform(textureTracker.bindTexture(GL_TEXTURE_RECTANGLE_ARB,dataItem->bathymetryTexture));
 	
 	dataItem->transparentWaterShader.uploadUniform(cellSize[0],cellSize[1]);
 	
@@ -1469,6 +1696,7 @@ void SandboxClient::glRenderActionTransparent(GLContextData& contextData) const
 	dataItem->transparentWaterShader.uploadUniform(depthTransform);
 	
 	dataItem->transparentWaterShader.uploadUniform(0.25f);
+	dataItem->transparentWaterShader.uploadUniform((elevationRange[1]-elevationRange[0])/65535.0f);
 	
 	/* Bind the vertex and index buffers: */
 	glBindBufferARB(GL_ARRAY_BUFFER_ARB,dataItem->waterVertexBuffer);
