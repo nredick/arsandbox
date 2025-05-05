@@ -24,16 +24,16 @@
 # matches the default Vrui installation; if Vrui's installation
 # directory was changed during Vrui's installation, the directory below
 # must be adapted.
-VRUI_MAKEDIR := /usr/local/share/Vrui-13.0/make
+VRUI_MAKEDIR = /usr/local/share/Vrui-13.0/make
 
 # Base installation directory for the Augmented Reality Sandbox. If this
-# is set to the default of $(PWD), the Augmented Reality Sandbox does
-# not have to be installed to be run. Created executables and resources
-# will be installed in the bin, etc, and share directories under the
-# given base directory, respectively.
+# is set to the default of $(PROJECT_ROOT), the Augmented Reality
+# Sandbox does not have to be installed to be run. Created executables
+# and resources will be installed in the bin, etc, and share directories
+# under the given base directory, respectively.
 # Important note: Do not use ~ as an abbreviation for the user's home
 # directory here; use $(HOME) instead.
-INSTALLDIR := $(shell pwd)
+INSTALLDIR = $(PROJECT_ROOT)
 
 ########################################################################
 # Everything below here should not have to be changed
