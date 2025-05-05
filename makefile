@@ -48,7 +48,7 @@ PROJECT_DISPLAYNAME = Augmented Reality Sandbox
 # clobbering each other. The value should be identical to the
 # major.minor version number found in VERSION in the root package
 # directory.
-PROJECT_MAJOR = 4
+PROJECT_MAJOR = 5
 PROJECT_MINOR = 0
 
 # Include definitions for the system environment and system-provided

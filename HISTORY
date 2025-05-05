@@ -189,4 +189,7 @@ SARndbox-3.2:
 SARndbox-4.0:
 - Bumped Vrui version requirement to Vrui-13.0-001.
 - Bumped Kinect version requirement to Kinect-5.0.
-- Adapted to Vrui's new project build system
+- Adapted to Vrui's new project build system.
+
+SARndbox-5.0:
+- Added snowpack simulation.
