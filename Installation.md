@@ -143,20 +143,22 @@ replacing `<AR Sandbox directory>` with the actual directory as usual.
 If you already built the Augmented Reality Sandbox according to Step 1, 
 you first have to update its configuration. Enter into the same terminal window:
 ```
-$ make VRUI_MAKEDIR=<Vrui build system location> config
+$ make VRUI_MAKEDIR=<Vrui build system location> INSTALLDIR=<installation location> config
 ```
+replacing `<installation location>` with your chosen location, for 
+example `INSTALLDIR=/usr/local`.
 
 Then, build the Augmented Reality Sandbox for installation in your 
 chosen destination by entering:
 ```
 $ make VRUI_MAKEDIR=<Vrui build system location> INSTALLDIR=<installation location>
 ```
-replacing `<installation location>` with your chosen location, for 
-example `INSTALLDIR=/usr/local`. You can add `-j<number of cpus>` as 
-usual, as well.
+replacing `<installation location>` with the same location as in the previous command.
+You can add `-j<number of cpus>` as usual, as well.
 
 Finally, install the Augmented Reality Sandbox in your chosen location 
 by entering:
 ```
 $ sudo make VRUI_MAKEDIR=<Vrui build system location> INSTALLDIR=<installation location> install
 ```
+again using the same `<installation location>`.
