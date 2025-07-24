@@ -1,0 +1,30 @@
+<!-- ## Step 7: Calculate the projector calibration matrix -->
+
+The most important step to create a true augmented reality display is to calibrate the Kinect camera capturing the sand surface and the projector projecting onto it with respect to each other, so that the projected colors and topographic contour lines appear exactly in the right place. Without this calibration, the Augmented Reality Sandbox is just a sandbox with some projection.
+
+This calibration step is performed using the `CalibrateProjector` utility, and a custom calibration target. This target has to be a flat circular disk whose exact center point is marked in some fashion. We recommend to use an old CD, glue a white paper disk of the proper size to one side, and draw two orthogonal lines through the CD's center point onto the paper disk. It is important that the two lines intersect in the exact center of the disk.
+
+The calibration procedure is to place the disk target into the Kinect camera's field-of-view in a sequence of prescribed positions, guided by the projector. When `CalibrateProjector` is started, it will first capture a background image of the current sand surface; it is important that the surface is not disturbed during or after this capture step, and that no other objects are between the Kinect camera and the sand surface. Afterwards, `CalibrateProjector` will collect a sequence of 3D tie points. For each tie point, it will display two intersecting lines. The user has to position the disk target such that the projected lines exactly intersect in the disk's center point, and such that the disk surface is parallel to the flattened average sand surface, i.e., the base plane that was collected in a previous calibration step. It is important to place the disk at a variety of elevations above and ideally below the base surface to collect a full 3D calibration matrix. If all tie points are in the same plane, the calibration procedure will fail.
+
+## Detailed calibration procedure
+
+1. Start `CalibrateProjector` and wait for it to collect a background frame. Background capture is active while the screen is red. It is essential to run `CalibrateProjector` in full-screen mode on the projector, or the resulting calibration will be defective. See the Vrui user's manual on how to force Vrui applications to run at the proper position and size. Alternatively, switch `CalibrateProjector` into full-screen mode manually by pressing the ++f11++ function key. When started, `CalibrateProjector` must be told the exact pixel size of the projector's image using the `-s <width> <height>` command line option. Using a wrong pixel size will result in a defective calibration. The recommended BenQ short-throw projector has 1024x768 pixels, which is also the default in the software. In other words, when using an XGA-resolution projector, the `-s` option is not required.
+
+2. Create a `Capture` tool and bind it to two keys (here "1" and "2"). Press and hold "1" and move the mouse to highlight the `Capture` item in the tool selection menu that pops up. Then release "1" to select the highlighted item. This will open a dialog box prompting to press a second key; press and release "2". This will close the dialog box. Do not press "1" again when the dialog box is still open; that will cancel the tool creation process. This process binds functions to two keys: "1" will capture a tie point, and "2" will re-capture the background sand surface. "2" should only be pressed if the sand surface changes during the calibration procedure, for example if a hole is dug to capture a lower tie point. After any change to the sand surface, remove the calibration object and any other objects, press "2", and wait for the screen to turn black again.
+
+3. Place the disk target at some random elevation above or below the flattened average sand surface such that the intersection of the projected white lines exactly coincides with the target's center point.
+
+4. Remove your hands from the disk target and confirm that the target is seen by the Kinect camera. `CalibrateProjector` will display all non-background objects as yellow blobs, and the object it identified as the calibration target as a green blob. Because there is no calibration yet, the green blob corresponding to the disk target will not be aligned with the target; simply ensure that there is a green blob, that it is circular and stable, and that it matches the actual calibration target (put your hand next to it, and see if the yellow blob matching your hand appears next to the green blob).
+
+5. Press the `Capture` tool's first button ("1"), and wait until the tie point is captured. Do not move the calibration target or hold any objects above the sand surface while a tie point is captured.
+
+6. `CalibrateProjector` will move on to the next tie point position, and display a new set of white lines. Repeat from step 3 until all tie points have been captured. Once the full set has been collected, `CalibrateProjector` will calculate the resulting calibration matrix, print some status information, and write the matrix to a file inside the Augmented Reality Sandbox's configuration directory. The user can continue to capture more tie points to improve calibration as desired; the calibration file will be updated after every additional tie point. Simply close the application window when satisfied. Additionally, after the first round of tie points has been collected, `CalibrateProjector` will track the calibration target in real-time and indicate its position with red crosshairs. To check calibration quality, place the target anywhere in or above the sandbox, remove your hands, and ensure that the red crosshairs intersect in the target's center.
+
+<!-- ## Tutorial video
+
+This calibration step is illustrated in the following tutorial video:
+http://www.youtube.com/watch?v=V_-Qn7oEsn4
+
+This older video:
+http://www.youtube.com/watch?v=vXkA9gUoSAc
+shows the previous calibration procedure, and does no longer apply. -->
