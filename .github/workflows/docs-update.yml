@@ -1,5 +1,4 @@
 name: Notify central docs of update
-# todo figure out the DOCS_DEPLOY_TOKEN
 
 on:
   push:
@@ -15,5 +14,5 @@ jobs:
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.DOCS_DEPLOY_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/your-org/central-docs-repo/actions/workflows/build-docs.yml/dispatches \
+            https://api.github.com/repos/vrui-vr/docs/actions/workflows/build-and-deploy.yml/dispatches \
             -d '{"ref":"main"}'
