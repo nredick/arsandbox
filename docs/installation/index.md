@@ -1,7 +1,11 @@
 # Getting started
 
-First and foremost, the appropriate hardware setup (physical sandbox, Kinect camera, and projector) and calibration is required before the `arsandbox` can be downloaded and installed.
+<!-- define abbreviations -->
+*[ARSandbox]: Augmented Reality Sandbox
 
-The following documentation precisely outlines how (and why) to setup, calibrate, download, and install the requisite hardware and software. Several of the steps also include tutorial videos.
+!!! important
+    Both VRUI and the Kinect package must be installed before the ARSanbox can be installed.
 
-Good luck! :)
+1. Install VRUI [(go to instructions $\rightarrow$)](https://vrui-vr.github.io/docs/vrui/installation/)
+2. Install Kinect package [(go to instructions $\rightarrow$)](https://vrui-vr.github.io/docs/kinect/installation/)
+3. Install ARSandbox!!!
