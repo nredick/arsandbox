@@ -8,5 +8,5 @@ We **strongly recommend** against using any built-in keystone correction a parti
 
 The second reason to aim for perpendicular projections is focus. Projector images are focused in a plane perpendicular to the projection direction, meaning that only a single line of the projected image will be in correct focus when a non-perpendicular projection is chosen. Either way, after the projector has been mounted, we recommend to focus it such that the entirety of the flattened average sand surface is as much in focus as possible.
 
-!!! note
+!!! info "Heads up!"
     On a tangential note, we also **strongly recommend** to only run projectors at their native pixel resolutions. Most projector models will support a wide range of input video formats to accommodate multiple uses, but using any resolution besides the one corresponding to the projector's image generator is a ***very bad idea*** because the projector will have to rescale the input pixel grid to its native pixel grid, which causes severe degradation in image quality. Some projectors "lie" about their capabilities to seem more advanced, resulting in a suboptimal resolution when using plug & play or automatic setups. It is always a good idea to check the projector's specification for its native resolution and ensure that the graphics card uses that resolution when the projector is connected.

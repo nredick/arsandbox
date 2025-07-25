@@ -1,4 +1,4 @@
-# Advanced Augmented Reality Sandbox Install
+# Advanced Augmented Reality Sandbox Installation guide
 
 <!-- define abbreviations -->
 *[ARSandbox]: Augmented Reality Sandbox
