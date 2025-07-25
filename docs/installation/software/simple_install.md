@@ -8,7 +8,7 @@ line you are supposed to enter starts with a `$` denoting the
 terminal's command prompt. Do *not* enter that `$`, but enter
 everything that follows, and end each line by pressing the Enter key. -->
 
-!!! note
+??? note
     Angle brackets `<>` in commands below are placeholders, meaning that you have to replace everything between, and including, the angle brackets with some text that depends on your specific circumstances.
 
     For example, if your host has eight CPUs, instead of entering `-j<number of CPUs>` as part of some command, you would enter `-j8`.
@@ -43,9 +43,9 @@ Then enter into the same terminal window:
 unzip <path to downloaded zip file>
 ```
 
-Replace `<path to downloaded zip file>` with the full path to the zip file, for example `~/Downloads/kinect-main.zip`.
+Replace `<path to downloaded zip file>` with the full path to the zip file, for example `~/Downloads/arsandbox-main.zip`.
 
-Finally, check for the name of your new AR Sandbox directory by entering:
+Finally, check for the name of your new ARSandbox directory by entering:
 
 ```sh
 ls
@@ -54,10 +54,10 @@ ls
 which will list all files in the `src` directory, which should include a new directory called `arsandbox-main`. Take note of this name, and then enter into that directory by typing this command into the terminal window:
 
 ```sh
-cd <AR Sandbox directory>
+cd <ARSandbox directory>
 ```
 
-where you replace `<AR Sandbox directory>` with the name of the directory where you cloned/unpacked the ARSandbox in the previous step, as printed by `ls`.
+where you replace `<ARSandbox directory>` with the name of the directory where you cloned/unpacked the ARSandbox in the previous step, as printed by `ls`.
 
 ### Option 2: Clone the repository from GitHub
 
@@ -73,7 +73,7 @@ Then, clone the repository from GitHub:
 git clone https://github.com/vrui-vr/arsandbox.git
 ```
 
-Finally, check for the name of your new AR Sandbox directory by entering:
+Finally, check for the name of your new ARSandbox directory by entering:
 
 ```sh
 ls
@@ -82,10 +82,10 @@ ls
 which will list all files in the `src` directory, which should include a new directory called `arsandbox`. Take note of this name, and then enter into that directory by typing this command into the terminal window:
 
 ```sh
-cd <AR Sandbox directory>
+cd <ARSandbox directory>
 ```
 
-where you replace `<AR Sandbox directory>` with the name of the directory where you cloned/unpacked the ARSandbox in the previous step, as printed by `ls`.
+where you replace `<ARSandbox directory>` with the name of the directory where you cloned/unpacked the ARSandbox in the previous step, as printed by `ls`.
 
 ## Step 2: Build the ARSandbox
 
@@ -134,14 +134,14 @@ make: Nothing to be done for 'all'.
 
 If built following these simple instructions, the ARSandbox *does not need to be installed.* You can run the built applications, `CalibrateProjector`, `SARndbox`, and `SARndboxClient`, directly from the directory where you cloned or unpacked the sources.
 
-For example, to run the main AR Sandbox application, you would enter the following into a terminal window:
+For example, to run the main ARSandbox application, you would enter the following into a terminal window:
 
 ```sh
-cd <AR Sandbox directory>
+cd <ARSandbox directory>
 ./bin/SARndbox
 ```
 
-where you replace `<AR Sandbox directory>` with the full name of the directory where you cloned/unpacked the ARSandbox sources, for example:
+where you replace `<ARSandbox directory>` with the full name of the directory where you cloned/unpacked the ARSandbox sources, for example:
 
 ```sh
 cd ~/src/arsandbox-main
