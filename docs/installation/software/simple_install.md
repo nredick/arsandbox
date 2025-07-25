@@ -1,4 +1,4 @@
-# Simple Augmented Reality Sandbox Install
+# Simple Augmented Reality Sandbox Installation guide
 
 <!-- define abbreviations -->
 *[ARSandbox]: Augmented Reality Sandbox
@@ -8,7 +8,7 @@ line you are supposed to enter starts with a `$` denoting the
 terminal's command prompt. Do *not* enter that `$`, but enter
 everything that follows, and end each line by pressing the Enter key. -->
 
-??? note
+??? info "Heads up!"
     Angle brackets `<>` in commands below are placeholders, meaning that you have to replace everything between, and including, the angle brackets with some text that depends on your specific circumstances.
 
     For example, if your host has eight CPUs, instead of entering `-j<number of CPUs>` as part of some command, you would enter `-j8`.
@@ -89,7 +89,7 @@ where you replace `<ARSandbox directory>` with the name of the directory where y
 
 ## Step 2: Build the ARSandbox
 
-!!! important
+!!! info "Heads up!"
     Make sure you are in the new `arsandbox-main` (from option 1) or `arsandbox` (from option 2) directory.
 
 To build the ARSandbox, enter into the same terminal window:
